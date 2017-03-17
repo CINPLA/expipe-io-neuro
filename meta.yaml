@@ -27,7 +27,7 @@ requirements:
 
 test:
   imports:
-    - expipe-io-neuroscience
+    - expipe_io_neuroscience
 
 about:
   home: https://github.com/CINPLA/expipe-io-neuroscience/
