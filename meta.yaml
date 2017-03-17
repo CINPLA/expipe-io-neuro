@@ -1,5 +1,5 @@
 package:
-  name: expipe-io-neuroscience
+  name: expipe-io-neuro
   version: {{ environ.get("GIT_DESCRIBE", "unknown_version")|replace("v", "")|replace("-", "_") }}
 
 source:
@@ -27,9 +27,9 @@ requirements:
 
 test:
   imports:
-    - expipe_io_neuroscience
+    - expipe_io_neuro
 
 about:
-  home: https://github.com/CINPLA/expipe-io-neuroscience/
+  home: https://github.com/CINPLA/expipe-io-neuro/
   license: GPLv3
   license_file: LICENSE

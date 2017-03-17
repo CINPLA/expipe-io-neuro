@@ -10,7 +10,7 @@ long_description = open("README.md").read()
 install_requires = []
 
 setup(
-    name="expipe_io_neuroscience",
+    name="expipe_io_neuro",
     packages=find_packages(),
     include_package_data=True,
     version=0.1,
