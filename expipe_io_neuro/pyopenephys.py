@@ -13,7 +13,7 @@ Authors: Alessio Buccino @CINPLA,
          Mikkel E. Lepperod @CINPLA
 """
 
-#TODO: add extensive funciton descrption and verbose option for prints
+# TODO: add extensive funciton descrption and verbose option for prints
 
 from __future__ import division
 from __future__ import print_function
@@ -86,6 +86,18 @@ class AnalogSignal:
         )
 
 
+class DigitalSignal:
+    def __init__(self, channel_id, times, sample_rate):
+        self.times = times
+        self.channel_id = channel_id
+        self.sample_rate = sample_rate
+
+    def __str__(self):
+        return "<OpenEphys digital signal: nchannels: {}>".format(
+            self.channel_id
+        )
+
+
 class TrackingData:
     def __init__(self, times, positions, attrs):
         self.attrs = attrs
@@ -110,9 +122,12 @@ class File:
         self._absolute_foldername = foldername
         self._path, relative_foldername = os.path.split(foldername)
         self._analog_signals_dirty = True
+        self._digital_signals_dirty = True
         self._channel_groups_dirty = True
         self._tracking_dirty = True
         self._events_dirty = True
+
+        self._keep_channels = keep_channels
 
         # TODO: support for multiple exp in same folder
         filenames = [f for f in os.listdir(self._absolute_foldername)]
@@ -213,6 +228,7 @@ class File:
         if self.osc:
             print('OSC Port. NodeId: ', self.oscID)
 
+        # TODO: channel mapping only if FPGA is present
         sort_idx = np.argsort(self._channel_info['channels'])
         self._channel_info['channels'] = np.array(self._channel_info['channels'])[sort_idx]
         self._channel_info['gain'] = np.array(self._channel_info['gain'])[sort_idx]
@@ -229,6 +245,10 @@ class File:
     @property
     def session(self):
         return op.split(self._absolute_foldername)[-1]
+
+    @property
+    def duration(self):
+        return self._duration
 
     def channel_group(self, channel_id):
         if self._channel_groups_dirty:
@@ -249,6 +269,13 @@ class File:
             self._read_analog_signals()
 
         return self._analog_signals
+
+    @property
+    def digital_signals(self):
+        if self._digital_signals_dirty:
+            self._read_digital_signals()
+
+        return self._digital_signals
 
     @property
     def events(self):
@@ -313,12 +340,12 @@ class File:
         if self.osc is True and any('.eventsbinary' in f for f in filenames):
             posfile = [f for f in filenames if '.eventsbinary' in f][0]
             print('.eventsbinary: ', posfile)
-            if sys.version_info > (3, 0):
-                with open(op.join(self._absolute_foldername, posfile), "r", encoding='utf-8', errors='ignore') as fh:
-                    self._read_tracking_events(fh)
-            else:
-                with open(op.join(self._absolute_foldername, posfile), "r") as fh:
-                    self._read_tracking_events(fh)
+            # if sys.version_info > (3, 0):
+            with open(op.join(self._absolute_foldername, posfile), "r", encoding='utf-8', errors='ignore') as fh:
+                self._read_tracking_events(fh)
+            # else:
+            #     with open(op.join(self._absolute_foldername, posfile), "r") as fh:
+            #         self._read_tracking_events(fh)
         else:
             raise ValueError("'.eventsbinary' should be in the folder")
 
@@ -427,11 +454,11 @@ class File:
             attrs['port'] = self.oscPort
             attrs['address'] = self.oscAddress
 
-        tracking_data = TrackingData(
+        tracking_data = [TrackingData(
             times=ts_s,
-            positions=coord_s.T,
+            positions=coord_s,
             attrs=attrs
-        )
+        )]
 
         self._tracking = tracking_data
         self._tracking_dirty = False
@@ -448,6 +475,16 @@ class File:
                     print('.dat: ', datfile)
                     with open(op.join(self._absolute_foldername, datfile), "rb") as fh:
                         anas, nsamples = read_analog_binary_signals(fh, self.nchan)
+                        # TODO add gain HERE!
+                        # if self._keep_channels is not None:
+                        #     # Compare recorded and keep_channels to find idx
+                        #     # TODO FIX THIS - maybe it worked
+                        #     idx = []
+                        #     for ch in self._keep_channels:
+                        #         idx.append(np.nonzero(self._channel_info['channels'] == ch))
+                        #     anas =  anas[idx]
+                        # else:
+                        #     anas = np.transpose(anas)
                 else:
                     raise ValueError("'.dat' should be in the folder")
             else:
@@ -479,27 +516,13 @@ class File:
         )]
         self._analog_signals_dirty = False
 
-
-    # TODO should we make timestamps a property
-    def _create_analog_timestamps(self, messagefile, nsamples):
-        with open(op.join(self._absolute_foldername, messagefile)) as fm:
-            lines = fm.readlines()
-            if any('start time:' in l for l in lines):
-                start = [l for l in lines if 'start time:' in l][0]
-                s = start.split()
-                start_time = float(int(s[0]))/self.sample_rate
-
-                self._timestamps = np.arange(nsamples)/self.sample_rate + start_time
-            else:
-                raise Exception('eventsmessages file should be in the same folder')
-
-    def _read_events(self):
+    def _read_digital_signals(self):
         filenames = [f for f in os.listdir(self._absolute_foldername)]
         if any('.events' in f and 'all_channels' in f for f in filenames):
             eventsfile = [f for f in filenames if '.events' in f and 'all_channels' in f][0]
             print('.events ', eventsfile)
-            with open(op.join(self._absolute_foldername, eventsfile), "rb") as fh:
-                data = { }
+            with open(op.join(self._absolute_foldername, eventsfile), "r", encoding='utf-8', errors='ignore') as fh:
+                data = {}
 
                 print('loading events...')
                 header = readHeader(fh)
@@ -540,7 +563,38 @@ class File:
                 data['sampleNum'] = sampleNum[:index]
 
                 # TODO: extract fpga trigger (TTLEVENTS 3 and return different channels)
+                # Consider only TTL from FPGA (for now)
+                idxttl_fpga = np.where((data['eventType'] == 3) & (data['nodeId'] == int(self.rhythmID)))
+                digchan = []
+                digs = []
+                if len(idxttl_fpga[0]) != 0:
+                    print('TTLevents: ', len(idxttl_fpga[0]))
+                    digchan = np.unique(data['channel'][idxttl_fpga])
+                    if len(digchan) == 1:
+                        # Single digital input
+                        digs = data['timestamps'][idxttl_fpga]
+                        # Consider rising edge only
+                        digs = digs[::2]
+                        # remove start_time (offset) and transform in seconds
+                        digs -= data['timestamps'][0]
+                        digs /= self.sample_rate
+                    else:
+                        for chan in digchan:
+                            idx_chan = np.where(data['channel'] == chan)
+                            new_dig = data['timestamps'][idx_chan]
+                            # Consider rising edge only
+                            new_dig = new_dig[::2]
+                            new_dig -= data['timestamps'][0]
+                            new_dig /= self.sample_rate
+                            digs.append(new_dig)
 
+                self._digital_signals = [DigitalSignal(
+                    channel_id=digchan,
+                    times=digs,
+                    sample_rate=self.sample_rate
+                )]
+                self._digital_signals_dirty = False
+                self._events_dirty = False
                 self._events = data
 
 
@@ -730,7 +784,7 @@ def readHeader(fh):
     # Remove newlines and redundant "header." prefixes
     # The result should be a series of "key = value" strings, separated
     # by semicolons.
-    header_string = fh.read(1024).decode("utf-8").replace('\n','').replace('header.','')
+    header_string = fh.read(1024).replace('\n','').replace('header.','')
 
     # Parse each key = value string separately
     for pair in header_string.split(';'):
