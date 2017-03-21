@@ -29,6 +29,7 @@ import xml.etree.ElementTree as ET
 from xmljson import yahoo as yh
 from datetime import datetime
 from six import exec_
+from copy import copy
 
 # TODO related files
 # TODO append .continuous files directly to file and memory map in the end
@@ -219,7 +220,7 @@ class File:
             self._format = None
         print('Decoding data from ', self._format, ' format')
 
-        # TODO move duration in analog_signals property
+        # TODO move duration in analog_signals property. What if openephys only used for tracking or other?
         self._duration = (self.analog_signals[0].signal.shape[1] /
                           self.analog_signals[0].sample_rate)
 
@@ -229,18 +230,19 @@ class File:
             print('OSC Port. NodeId: ', self.oscID)
 
         # TODO: channel mapping only if FPGA is present
-        sort_idx = np.argsort(self._channel_info['channels'])
-        self._channel_info['channels'] = np.array(self._channel_info['channels'])[sort_idx]
-        self._channel_info['gain'] = np.array(self._channel_info['gain'])[sort_idx]
-        self._channel_group_info = _read_python(probefile)['channel_groups']
-        for group in self._channel_group_info.values():
-            group['filemap'] = []
-            group['gain'] = []
-            # prb file channels are sequential, 'channels' are not as they depend on FPGA channel selection -> Collapse them into array
-            for chan in group['channels']:
-                idx = self._channel_info['channels'].tolist()[chan]
-                group['filemap'].append(idx)
-                group['gain'].append(self._channel_info['gain'][chan])
+        if self.rhythm:
+            sort_idx = np.argsort(self._channel_info['channels'])
+            self._channel_info['channels'] = np.array(self._channel_info['channels'])[sort_idx]
+            self._channel_info['gain'] = np.array(self._channel_info['gain'])[sort_idx]
+            self._channel_group_info = _read_python(probefile)['channel_groups']
+            for group in self._channel_group_info.values():
+                group['filemap'] = []
+                group['gain'] = []
+                # prb file channels are sequential, 'channels' are not as they depend on FPGA channel selection -> Collapse them into array
+                for chan in group['channels']:
+                    idx = self._channel_info['channels'].tolist()[chan]
+                    group['filemap'].append(idx)
+                    group['gain'].append(self._channel_info['gain'][chan])
 
     @property
     def session(self):
@@ -367,7 +369,7 @@ class File:
         h = np.array([])
         w = np.array([])
 
-        nsamples = (os.fstat(fh.fileno()).st_size -fh.tell()) / 25
+        nsamples = (os.fstat(fh.fileno()).st_size -fh.tell()) // 25
         print('Estimated position samples: ', nsamples)
         nread = 0
 
@@ -475,18 +477,24 @@ class File:
                     print('.dat: ', datfile)
                     with open(op.join(self._absolute_foldername, datfile), "rb") as fh:
                         anas, nsamples = read_analog_binary_signals(fh, self.nchan)
-                        # TODO add gain HERE!
-                        # if self._keep_channels is not None:
-                        #     # Compare recorded and keep_channels to find idx
-                        #     # TODO FIX THIS - maybe it worked
-                        #     idx = []
-                        #     for ch in self._keep_channels:
-                        #         idx.append(np.nonzero(self._channel_info['channels'] == ch))
-                        #     anas =  anas[idx]
-                        # else:
-                        #     anas = np.transpose(anas)
+                    # Keep only selected channels
+                    if self._keep_channels is not None:
+                        # Compare recorded and keep_channels to find idx
+                        idx = []
+                        for ch in self._keep_channels:
+                            if len(np.argwhere(self._channel_info['channels'] == ch)) == 1:
+                                idx.append(np.argwhere(self._channel_info['channels'] == ch).item())
+                            elif len(np.argwhere(self._channel_info['channels'] == ch)) == 0:
+                                raise ValueError('Some channels in keep_channels were not recorded')
+                        anas_keep = anas[idx].astype('float32')
+                        for i, ch in enumerate(idx):
+                            anas_keep[i] = anas_keep[i]*self._channel_info['gain'][ch]
+                    else:
+                        anas_keep = anas.astype('float32')
+                        for ch, i in self._channel_info['channels']:
+                            anas_keep[i] = float(anas_keep[i])*self._channel_info['gain'][ch]
                 else:
-                    raise ValueError("'.dat' should be in the folder")
+                    raise ValueError("'experiment_###.dat' should be in the folder")
             else:
                 print('No rhythm FPGA data')
         elif self._format == 'openephys':
@@ -510,8 +518,8 @@ class File:
                 print('Done!')
 
         self._analog_signals = [AnalogSignal(
-            channel_id=range(anas.shape[0]),
-            signal=anas,
+            channel_id=range(anas_keep.shape[0]),
+            signal=anas_keep,
             sample_rate=self.sample_rate
         )]
         self._analog_signals_dirty = False
