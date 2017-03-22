@@ -154,7 +154,65 @@ class File:
         self._channel_info = {}
         self.nchan = 0
         FPGA_count = 0
-        for sigchain in self.settings['SIGNALCHAIN']:
+        if type(self.settings['SIGNALCHAIN']) is list:
+            for sigchain in self.settings['SIGNALCHAIN']:
+                if type(sigchain['PROCESSOR']) is list:
+                    for processor in sigchain['PROCESSOR']:
+                        # print(processor['name'])
+                        if processor['name'] == 'Sources/Rhythm FPGA':
+                            assert FPGA_count == 0
+                            FPGA_count += 1
+                            # TODO can there be multiple FPGAs ?
+                            self._channel_info['channels'] = []
+                            self._channel_info['gain'] = []
+                            self.rhythm = True
+                            self.rhythmID = processor['NodeId']
+                            gain = {ch['number']: ch['gain']
+                                    for chs in processor['CHANNEL_INFO'].values()
+                                    for ch in chs}
+                            for chan in processor['CHANNEL']:
+                                if chan['SELECTIONSTATE']['record'] == '1':
+                                    self.nchan += 1
+                                    chnum = chan['number']
+                                    self._channel_info['channels'].append(int(chnum))
+                                    self._channel_info['gain'].append(float(gain[chnum]))
+                                sampleIdx = int(processor['EDITOR']['SampleRate'])-1
+                                self.sample_rate = rhythmRates[sampleIdx] * 1000. * pq.Hz
+                        if processor['name'] == 'Sources/OSC Port':
+                            self.osc = True
+                            self.oscID.append(processor['NodeId'])
+                            self.oscPort.append(processor['EDITOR']['OSCNODE']['port'])
+                            self.oscAddress.append(processor['EDITOR']['OSCNODE']['address'])
+                else:
+                    processor = sigchain['PROCESSOR']
+                    # print(processor['name'])
+                    if processor['name'] == 'Sources/Rhythm FPGA':
+                        assert FPGA_count == 0
+                        FPGA_count += 1
+                        # TODO can there be multiple FPGAs ?
+                        self._channel_info['channels'] = []
+                        self._channel_info['gain'] = []
+                        self.rhythm = True
+                        self.rhythmID = processor['NodeId']
+                        gain = {ch['number']: ch['gain']
+                                for chs in processor['CHANNEL_INFO'].values()
+                                for ch in chs}
+                        for chan in processor['CHANNEL']:
+                            if chan['SELECTIONSTATE']['record'] == '1':
+                                self.nchan += 1
+                                chnum = chan['number']
+                                self._channel_info['channels'].append(int(chnum))
+                                self._channel_info['gain'].append(float(gain[chnum]))
+                            sampleIdx = int(processor['EDITOR']['SampleRate']) - 1
+                            self.sample_rate = rhythmRates[sampleIdx] * 1000. * pq.Hz
+                        print('RhythmFPGA with ', self.nchan, ' channels. NodeId: ', self.rhythmID)
+                    if processor['name'] == 'Sources/OSC Port':
+                        self.osc = True
+                        self.oscID.append(processor['NodeId'])
+                        self.oscPort.append(processor['EDITOR']['OSCNODE']['port'])
+                        self.oscAddress.append(processor['EDITOR']['OSCNODE']['address'])
+        else:
+            sigchain = self.settings['SIGNALCHAIN']
             if type(sigchain['PROCESSOR']) is list:
                 for processor in sigchain['PROCESSOR']:
                     # print(processor['name'])
@@ -175,7 +233,7 @@ class File:
                                 chnum = chan['number']
                                 self._channel_info['channels'].append(int(chnum))
                                 self._channel_info['gain'].append(float(gain[chnum]))
-                            sampleIdx = int(processor['EDITOR']['SampleRate'])-1
+                            sampleIdx = int(processor['EDITOR']['SampleRate']) - 1
                             self.sample_rate = rhythmRates[sampleIdx] * 1000. * pq.Hz
                     if processor['name'] == 'Sources/OSC Port':
                         self.osc = True
@@ -220,9 +278,9 @@ class File:
             self._format = None
         print('Decoding data from ', self._format, ' format')
 
-        # TODO move duration in analog_signals property. What if openephys only used for tracking or other?
-        self._duration = (self.analog_signals[0].signal.shape[1] /
-                          self.analog_signals[0].sample_rate)
+        # # TODO move duration in analog_signals property. What if openephys only used for tracking or other?
+        # self._duration = (self.analog_signals[0].signal.shape[1] /
+        #                   self.analog_signals[0].sample_rate)
 
         if self.rhythm:
             print('RhythmFPGA with ', self.nchan, ' channels. NodeId: ', self.rhythmID)
@@ -570,40 +628,43 @@ class File:
                 data['recordingNumber'] = recordingNumber[:index]
                 data['sampleNum'] = sampleNum[:index]
 
-                # TODO: extract fpga trigger (TTLEVENTS 3 and return different channels)
+                # TODO: check if data is null (data['event...'] is null?
                 # Consider only TTL from FPGA (for now)
-                idxttl_fpga = np.where((data['eventType'] == 3) & (data['nodeId'] == int(self.rhythmID)))
-                digchan = []
-                digs = []
-                if len(idxttl_fpga[0]) != 0:
-                    print('TTLevents: ', len(idxttl_fpga[0]))
-                    digchan = np.unique(data['channel'][idxttl_fpga])
-                    if len(digchan) == 1:
-                        # Single digital input
-                        digs = data['timestamps'][idxttl_fpga]
-                        # Consider rising edge only
-                        digs = digs[::2]
-                        # remove start_time (offset) and transform in seconds
-                        digs -= data['timestamps'][0]
-                        digs /= self.sample_rate
-                    else:
-                        for chan in digchan:
-                            idx_chan = np.where(data['channel'] == chan)
-                            new_dig = data['timestamps'][idx_chan]
+                if len(data['timestamps']) != 0:
+                    idxttl_fpga = np.where((data['eventType'] == 3) & (data['nodeId'] == int(self.rhythmID)))
+                    digchan = []
+                    digs = []
+                    if len(idxttl_fpga[0]) != 0:
+                        print('TTLevents: ', len(idxttl_fpga[0]))
+                        digchan = np.unique(data['channel'][idxttl_fpga])
+                        if len(digchan) == 1:
+                            # Single digital input
+                            digs = data['timestamps'][idxttl_fpga]
                             # Consider rising edge only
-                            new_dig = new_dig[::2]
-                            new_dig -= data['timestamps'][0]
-                            new_dig /= self.sample_rate
-                            digs.append(new_dig)
+                            digs = digs[::2]
+                            # remove start_time (offset) and transform in seconds
+                            digs -= data['timestamps'][0]
+                            digs /= self.sample_rate
+                        else:
+                            for chan in digchan:
+                                idx_chan = np.where(data['channel'] == chan)
+                                new_dig = data['timestamps'][idx_chan]
+                                # Consider rising edge only
+                                new_dig = new_dig[::2]
+                                new_dig -= data['timestamps'][0]
+                                new_dig /= self.sample_rate
+                                digs.append(new_dig)
 
-                self._digital_signals = [DigitalSignal(
-                    channel_id=digchan,
-                    times=digs,
-                    sample_rate=self.sample_rate
-                )]
-                self._digital_signals_dirty = False
-                self._events_dirty = False
-                self._events = data
+                    self._digital_signals = [DigitalSignal(
+                        channel_id=digchan,
+                        times=digs,
+                        sample_rate=self.sample_rate
+                    )]
+                    self._digital_signals_dirty = False
+                    self._events_dirty = False
+                    self._events = data
+                else:
+                    self._digital_signals = []
 
 
 def read_analog_binary_signals(filehandle, numchan):
