@@ -25,6 +25,7 @@ def _prepare_exdir_file(exdir_file):
 
 def convert(axona_filename, exdir_path):
     axona_file = pyxona.File(axona_filename)
+    axona_directory, _ = os.path.split(axona_filename)
     exdir_file = exdir.File(exdir_path)
     dtime = axona_file._start_datetime.strftime('%Y-%m-%dT%H:%M:%S')
     exdir_file.attrs['session_start_time'] = dtime
@@ -36,11 +37,14 @@ def convert(axona_filename, exdir_path):
 
     target_folder = acquisition.require_raw(axona_file.session)
     acquisition.attrs["axona_session"] = axona_file.session
-
-    for filename in axona_file.related_files:
+    acquisition.attrs["acquisition_system"] = 'Axona'
+    related_files = glob.glob(os.path.join(axona_directory,
+                                           '*' + axona_file.session + '*'))
+    for filename in related_files:
         shutil.copy(filename, target_folder)
 
-    print("Copied files matching", axona_file.session + ".*", "to", target_folder)
+    print("Copied files matching *", axona_file.session + "*", "to",
+          target_folder)
 
 
 def load_axona_file(exdir_file):

@@ -37,7 +37,8 @@ def convert(openephys_directory, exdir_path, probefile):
 
     target_folder = op.join(acquisition.directory, openephys_file.session)
     acquisition.attrs["openephys_session"] = openephys_file.session
-
+    acquisition.attrs["acquisition_system"] = 'OpenEphys'
+    
     shutil.copytree(openephys_file._absolute_foldername, target_folder)
     shutil.copy(probefile, op.join(target_folder, 'openephys_channelmap.prb'))
 
