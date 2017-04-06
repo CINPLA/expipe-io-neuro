@@ -165,7 +165,7 @@ def generate_units(exdir_path):
                     times = spike_train.times[indices]
                     unit.require_dataset("times", data=times)
                     unit.attrs['num_samples'] = len(times)
-                    unit.attrs["cluster_group"] = "Unsorted"
+                    unit.attrs["cluster_group"] = "unsorted"
                     unit.attrs["cluster_id"] = int(index)
                     # TODO: Add unit_description (e.g. cell type) and source as in NWB
                     unit.attrs["source"] = None
@@ -265,12 +265,12 @@ class AxonaFilerecord(Filerecord):
 
     def generate_spike_trains(self):
         generate_spike_trains(self.local_path)
-        
+
     def generate_inp(self):
         generate_inp(self.local_path)
-        
+
     def generate_units(self):
         generate_units(self.local_path)
-        
+
     def generate_clusters(self):
         generate_clusters(self.local_path)
