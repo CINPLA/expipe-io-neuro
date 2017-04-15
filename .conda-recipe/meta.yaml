@@ -1,5 +1,5 @@
 package:
-    name: exana
+    name: expipe-io-neuro
     version: {{ environ.get("GIT_TAG", "0.0.0_custom")|replace("v", "")|replace("-", "_") }}
 source:
     git_url: ..
@@ -24,10 +24,10 @@ requirements:
         - gitpython
 test:
   imports:
-    - exana
+    - expipe-io-neuro
 about:
     description: ''
-    dev_url: https://github.com/CINPLA/exana
+    dev_url: https://github.com/CINPLA/expipe-io-neuro
     license: GNU GPLv3
     license_family: GPL
     license_file: LICENSE
