@@ -184,103 +184,16 @@ class File:
         self._channel_info = {}
         self.nchan = 0
         FPGA_count = 0
-        if type(self.settings['SIGNALCHAIN']) is list:
-            for sigchain in self.settings['SIGNALCHAIN']:
-                if type(sigchain['PROCESSOR']) is list:
-                    for processor in sigchain['PROCESSOR']:
-                        # print(processor['name'])
-                        if processor['name'] == 'Sources/Rhythm FPGA':
-                            assert FPGA_count == 0
-                            FPGA_count += 1
-                            # TODO can there be multiple FPGAs ?
-                            self._channel_info['channels'] = []
-                            self._channel_info['gain'] = []
-                            self.rhythm = True
-                            self.rhythmID = processor['NodeId']
-                            gain = {ch['number']: ch['gain']
-                                    for chs in processor['CHANNEL_INFO'].values()
-                                    for ch in chs}
-                            for chan in processor['CHANNEL']:
-                                if chan['SELECTIONSTATE']['record'] == '1':
-                                    self.nchan += 1
-                                    chnum = chan['number']
-                                    self._channel_info['channels'].append(int(chnum))
-                                    self._channel_info['gain'].append(float(gain[chnum]))
-                                sampleIdx = int(processor['EDITOR']['SampleRate'])-1
-                                self._sample_rate = rhythmRates[sampleIdx] * 1000. * pq.Hz
-                        if processor['name'] == 'Sources/OSC Port':
-                            self.osc = True
-                            self.oscID.append(processor['NodeId'])
-                            self.oscPort.append(processor['EDITOR']['OSCNODE']['port'])
-                            self.oscAddress.append(processor['EDITOR']['OSCNODE']['address'])
-                        if processor['name'] == 'Sources/Sync Port':
-                            self.sync = True
-                            self.syncID = processor['NodeId']
-                else:
-                    processor = sigchain['PROCESSOR']
-                    # print(processor['name'])
-                    if processor['name'] == 'Sources/Rhythm FPGA':
-                        assert FPGA_count == 0
-                        FPGA_count += 1
-                        # TODO can there be multiple FPGAs ?
-                        self._channel_info['channels'] = []
-                        self._channel_info['gain'] = []
-                        self.rhythm = True
-                        self.rhythmID = processor['NodeId']
-                        gain = {ch['number']: ch['gain']
-                                for chs in processor['CHANNEL_INFO'].values()
-                                for ch in chs}
-                        for chan in processor['CHANNEL']:
-                            if chan['SELECTIONSTATE']['record'] == '1':
-                                self.nchan += 1
-                                chnum = chan['number']
-                                self._channel_info['channels'].append(int(chnum))
-                                self._channel_info['gain'].append(float(gain[chnum]))
-                            sampleIdx = int(processor['EDITOR']['SampleRate']) - 1
-                            self._sample_rate = rhythmRates[sampleIdx] * 1000. * pq.Hz
-                        print('RhythmFPGA with ', self.nchan, ' channels. NodeId: ', self.rhythmID)
-                    if processor['name'] == 'Sources/OSC Port':
-                        self.osc = True
-                        self.oscID.append(processor['NodeId'])
-                        self.oscPort.append(processor['EDITOR']['OSCNODE']['port'])
-                        self.oscAddress.append(processor['EDITOR']['OSCNODE']['address'])
-                    if processor['name'] == 'Sources/Sync Port':
-                        self.sync = True
-                        self.syncID = processor['NodeId']
+        if isinstance(self.settings['SIGNALCHAIN'], list):
+            sigchain_iter = self.settings['SIGNALCHAIN']
         else:
-            sigchain = self.settings['SIGNALCHAIN']
-            if type(sigchain['PROCESSOR']) is list:
-                for processor in sigchain['PROCESSOR']:
-                    # print(processor['name'])
-                    if processor['name'] == 'Sources/Rhythm FPGA':
-                        assert FPGA_count == 0
-                        FPGA_count += 1
-                        # TODO can there be multiple FPGAs ?
-                        self._channel_info['channels'] = []
-                        self._channel_info['gain'] = []
-                        self.rhythm = True
-                        self.rhythmID = processor['NodeId']
-                        gain = {ch['number']: ch['gain']
-                                for chs in processor['CHANNEL_INFO'].values()
-                                for ch in chs}
-                        for chan in processor['CHANNEL']:
-                            if chan['SELECTIONSTATE']['record'] == '1':
-                                self.nchan += 1
-                                chnum = chan['number']
-                                self._channel_info['channels'].append(int(chnum))
-                                self._channel_info['gain'].append(float(gain[chnum]))
-                            sampleIdx = int(processor['EDITOR']['SampleRate']) - 1
-                            self._sample_rate = rhythmRates[sampleIdx] * 1000. * pq.Hz
-                    if processor['name'] == 'Sources/OSC Port':
-                        self.osc = True
-                        self.oscID.append(processor['NodeId'])
-                        self.oscPort.append(processor['EDITOR']['OSCNODE']['port'])
-                        self.oscAddress.append(processor['EDITOR']['OSCNODE']['address'])
-                    if processor['name'] == 'Sources/Sync Port':
-                        self.sync = True
-                        self.syncID = processor['NodeId']
+            sigchain_iter = [self.settings['SIGNALCHAIN']]
+        for sigchain in sigchain_iter:
+            if isinstance(sigchain['PROCESSOR'], list):
+                processor_iter = sigchain['PROCESSOR']
             else:
-                processor = sigchain['PROCESSOR']
+                processor_iter = [sigchain['PROCESSOR']]
+            for processor in processor_iter:
                 # print(processor['name'])
                 if processor['name'] == 'Sources/Rhythm FPGA':
                     assert FPGA_count == 0
@@ -299,9 +212,8 @@ class File:
                             chnum = chan['number']
                             self._channel_info['channels'].append(int(chnum))
                             self._channel_info['gain'].append(float(gain[chnum]))
-                        sampleIdx = int(processor['EDITOR']['SampleRate']) - 1
+                        sampleIdx = int(processor['EDITOR']['SampleRate'])-1
                         self._sample_rate = rhythmRates[sampleIdx] * 1000. * pq.Hz
-                    print('RhythmFPGA with ', self.nchan, ' channels. NodeId: ', self.rhythmID)
                 if processor['name'] == 'Sources/OSC Port':
                     self.osc = True
                     self.oscID.append(processor['NodeId'])
@@ -310,6 +222,7 @@ class File:
                 if processor['name'] == 'Sources/Sync Port':
                     self.sync = True
                     self.syncID = processor['NodeId']
+
 
         # Check openephys format
         if self.settings['CONTROLPANEL']['recordEngine'] == 'OPENEPHYS':
