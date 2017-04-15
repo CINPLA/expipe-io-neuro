@@ -24,9 +24,9 @@ requirements:
         - gitpython
 test:
   imports:
-    - expipe-io-neuro
+      - expipe_io_neuro
 about:
-    description: ''
+    description: 'IO for expipe and neuroscience data'
     dev_url: https://github.com/CINPLA/expipe-io-neuro
     license: GNU GPLv3
     license_family: GPL
