@@ -136,7 +136,7 @@ class File:
     """
     Class for reading experimental data from an OpenEphys dataset.
     """
-    def __init__(self, foldername, probefile=None, keep_channels=None, zero_channel=None):
+    def __init__(self, foldername, probefile=None):
         # TODO assert probefile is a probefile
         # TODO add default prb map and allow to add it later
         self._absolute_foldername = foldername
@@ -146,8 +146,6 @@ class File:
         self._channel_groups_dirty = True
         self._tracking_dirty = True
         self._events_dirty = True
-
-        self._keep_channels = keep_channels
 
         # TODO: support for multiple exp in same folder
         filenames = [f for f in os.listdir(self._absolute_foldername)]
@@ -175,7 +173,8 @@ class File:
         self.syncID = []
 
         print('Loading Open-Ephys: reading settings.xml...')
-        with open(op.join(self._absolute_foldername, 'settings.xml')) as f:
+        self._set_fname = op.join(self._absolute_foldername, 'settings.xml')
+        with open(self._set_fname) as f:
             xmldata = f.read()
             self.settings = yh.data(ET.fromstring(xmldata))['SETTINGS']
         # read date in US formate
@@ -196,13 +195,14 @@ class File:
             for processor in processor_iter:
                 # print(processor['name'])
                 if processor['name'] == 'Sources/Rhythm FPGA':
-                    assert FPGA_count == 0
+                    if FPGA_count > 0:
+                        raise NotImplementedError
+                        # TODO can there be multiple FPGAs ?
                     FPGA_count += 1
-                    # TODO can there be multiple FPGAs ?
-                    self._channel_info['channels'] = []
-                    self._channel_info['gain'] = []
+                    self._channel_info['gain'] = {}
                     self.rhythm = True
                     self.rhythmID = processor['NodeId']
+                    # gain for all channels
                     gain = {ch['number']: ch['gain']
                             for chs in processor['CHANNEL_INFO'].values()
                             for ch in chs}
@@ -210,8 +210,7 @@ class File:
                         if chan['SELECTIONSTATE']['record'] == '1':
                             self.nchan += 1
                             chnum = chan['number']
-                            self._channel_info['channels'].append(int(chnum))
-                            self._channel_info['gain'].append(float(gain[chnum]))
+                            self._channel_info['gain'][chnum] = float(gain[chnum])
                         sampleIdx = int(processor['EDITOR']['SampleRate'])-1
                         self._sample_rate = rhythmRates[sampleIdx] * 1000. * pq.Hz
                 if processor['name'] == 'Sources/OSC Port':
@@ -239,20 +238,39 @@ class File:
             print('OSC Port. NodeId: ', self.oscID)
 
         if self.rhythm:
-            sort_idx = np.argsort(self._channel_info['channels'])
-            self._channel_info['channels'] = np.array(self._channel_info['channels'])[sort_idx]
-            self._channel_info['gain'] = np.array(self._channel_info['gain'])[sort_idx]
+            recorded_channels = sorted([int(chan) for chan in
+                                        self._channel_info['gain'].keys()])
+            self._channel_info['channels'] = recorded_channels
             if probefile is not None:
-                self._channel_group_info = _read_python(probefile)['channel_groups']
-                for group in self._channel_group_info.values():
-                    group['filemap'] = []
+                self._probefile_ch_mapping = _read_python(probefile)['channel_groups']
+                for group_idx, group in self._probefile_ch_mapping.items():
                     group['gain'] = []
                     # prb file channels are sequential, 'channels' are not as they depend on FPGA channel selection -> Collapse them into array
-                    for chan in group['channels']:
-                        idx = self._channel_info['channels'].tolist()[chan]
-                        group['filemap'].append(idx)
-                        group['gain'].append(self._channel_info['gain'][chan])
+                    for chan, oe_chan in zip(group['channels'],
+                                             group['oe_channels']):
+                        if oe_chan not in recorded_channels:
+                            raise ValueError('Channel "' + str(oe_chan) +
+                                             '" in channel group "' +
+                                             str(group_idx) + '" in probefile' +
+                                             probefile +
+                                             ' is not marked as recorded ' +
+                                             'in settings file' +
+                                             self._set_fname)
+                        if recorded_channels.index(oe_chan) != chan:
+                            print(oe_chan)
+                            print(recorded_channels.index(oe_chan))
+                            print(chan)
+                            raise ValueError('Channel mapping does not match ' +
+                                             'sequence of recorded channels')
+                        group['gain'].append(
+                            self._channel_info['gain'][str(oe_chan)]
+                        )
+                self._keep_channels = [chan for group in
+                                       self._probefile_ch_mapping.values()
+                                       for chan in group['channels']]
+                print('Number of selected channels: ', len(self._keep_channels))
             else:
+                self._keep_channels = None # HACK
                 # TODO sequential channel mapping
                 print('sequential channel mapping')
 
@@ -348,17 +366,17 @@ class File:
         self._channel_group_id_to_channel_group = {}
         self._channel_count = 0
         self._channel_groups = []
-        for channel_group_id, channel_group_content in self._channel_group_info.items():
-            num_chans = len(channel_group_content['channels'])
+        for channel_group_id, channel_info in self._probefile_ch_mapping.items():
+            num_chans = len(channel_info['channels'])
             self._channel_count += num_chans
             channels = []
-            for idx, channel_id in enumerate(channel_group_content['filemap']):
+            for idx, chan in enumerate(channel_info['channels']):
                 channel = Channel(
                     index=idx,
-                    channel_id=channel_id,
-                    name="channel_{}_channel_group_{}".format(channel_id,
+                    channel_id=chan,
+                    name="channel_{}_channel_group_{}".format(chan,
                                                               channel_group_id),
-                    gain=channel_group_content['gain'][idx]
+                    gain=channel_info['gain'][idx]
                 )
                 channels.append(channel)
 
@@ -380,8 +398,8 @@ class File:
             self._channel_groups.append(channel_group)
             self._channel_group_id_to_channel_group[channel_group_id] = channel_group
 
-            for channel_id in channel_group_content['channels']:
-                self._channel_id_to_channel_group[channel_id] = channel_group
+            for chan in channel_info['channels']:
+                self._channel_id_to_channel_group[chan] = channel_group
 
         # TODO channel mapping to file
         self._channel_ids = np.arange(self._channel_count)
@@ -440,17 +458,14 @@ class File:
         if len(np.unique(ids)) == 1:
             print("Single tracking source")
 
-            # adjust times with linear interpolation
-            # idx_non_zero = np.where(ts != 0)
-            # linear_coeff = np.polyfit(np.arange(len(ts))[idx_non_zero], ts[idx_non_zero], 1)
-            # times_fit = linear_coeff[0]*(np.arange(len(ts))) + linear_coeff[1]
             difft = np.diff(ts)
             avg_period = np.mean(difft)
             sample_rate_s = 1./float(avg_period) * pq.Hz
 
             # Camera (0,0) is top left corner -> adjust y
-            coord_s = np.array([x, 1-y])
-            ts_s = ts
+            # coord_s = np.array([x, 1-y])
+            coord_s = [np.array([x, y])]
+            ts_s = [ts]
 
             width_s = np.mean(w)
             height_s = np.mean(h)
@@ -471,25 +486,19 @@ class File:
                 h_ = np.squeeze(h[np.where(ids==ss)])
                 ts_ = np.squeeze(ts[np.where(ids==ss)])
 
-                # adjust times with linear interpolation
-                # idx_non_zero = np.where(ts_ != 0)
-                # linear_coeff = np.polyfit(np.arange(len(ts_))[idx_non_zero], ts_[idx_non_zero], 1)
-                # times_fit = linear_coeff[0]*(np.arange(len(ts_))) + linear_coeff[1]
                 difft = np.diff(ts_)
                 avg_period = np.mean(difft)
                 sample_rate_ = 1./float(avg_period) * pq.Hz
-                # times_fit = ts_
-                # sample_rate_ = 0
 
                 # Camera (0,0) is top left corner -> adjust y
-                coord_ = np.array([x_, 1-y_])
+                # coord_ = np.array([x_, 1-y_])
+                coord_ = np.array([x_, y_])
                 coord_s.append(coord_)
                 ts_s.append(ts_)
 
                 sample_rate_s.append(sample_rate_)
                 width_s.append(np.mean(w_))
                 height_s.append(np.mean(h_))
-
             attrs = dict()
             attrs['sample_rate'] = np.array(sample_rate_s)
             attrs['length_scale'] = np.array([width_s, height_s])
@@ -504,48 +513,27 @@ class File:
         )]
 
         self._tracking = tracking_data
-        # self._tracking=results
         self._tracking_dirty = False
 
     def _read_analog_signals(self):
         if self.rhythm:
             # Check and decode files
             filenames = [f for f in os.listdir(self._absolute_foldername)]
-            anas = np.array([])
-            timestamps = np.array([])
             if self._format == 'binary':
-                if self.rhythm is True:
-                    if any('.dat' in f for f in filenames):
-                        datfile = [f for f in filenames if '.dat' in f and 'experiment' in f][0]
-                        print('.dat: ', datfile)
-                        with open(op.join(self._absolute_foldername, datfile), "rb") as fh:
-                            anas, nsamples = read_analog_binary_signals(fh, self.nchan)
-                        # Keep only selected channels
-                        if self._keep_channels is not None:
-                            # Compare recorded and keep_channels to find idx
-                            idx = []
-                            for ch in self._keep_channels:
-                                if len(np.argwhere(self._channel_info['channels'] == ch)) == 1:
-                                    idx.append(np.argwhere(self._channel_info['channels'] == ch).item())
-                                elif len(np.argwhere(self._channel_info['channels'] == ch)) == 0:
-                                    raise ValueError('Some channels in keep_channels were not recorded')
-                            anas_keep = anas[idx].astype('float32')
-                            for i, ch in enumerate(idx):
-                                anas_keep[i] = anas_keep[i]*self._channel_info['gain'][ch]
-                        else:
-                            anas_keep = anas.astype('float32')
-                            for ch, i in self._channel_info['channels']:
-                                anas_keep[i] = float(anas_keep[i])*self._channel_info['gain'][ch]
-                    else:
-                        raise ValueError("'experiment_###.dat' should be in the folder")
+                if any('.dat' in f for f in filenames):
+                    datfile = [f for f in filenames if '.dat' in f and 'experiment' in f][0]
+                    print('.dat: ', datfile)
+                    with open(op.join(self._absolute_foldername, datfile), "rb") as fh:
+                        anas, nsamples = read_analog_binary_signals(fh, self.nchan)
                 else:
-                    print('No rhythm FPGA data')
+                    raise ValueError("'experiment_###.dat' should be in the folder")
             elif self._format == 'openephys':
                 # Find continuous CH data
                 contFiles = [f for f in os.listdir(self._absolute_foldername) if 'continuous' in f and 'CH' in f]
                 contFiles = sorted(contFiles)
                 if len(contFiles) != 0:
                     print('Reading all channels')
+                    anas = np.array([])
                     for f in contFiles:
                         fullpath = op.join(self._absolute_foldername, f)
                         sig = read_analog_continuous_signal(fullpath)
@@ -556,10 +544,16 @@ class File:
                                 anas = np.append(anas, sig['data'][None, :], axis=0)
                             else:
                                 raise Exception('Channels must have the same number of samples')
-
                     anas = np.array(anas)
+                    assert anas.shape[0] == len(self._channel_info['channels'])
+                    nsamples = anas.shape[1]
                     print('Done!')
-
+            # Keep only selected channels
+            if self._keep_channels is not None:
+                assert anas.shape[1] == nsamples, 'Assumed wrong shape'
+                anas_keep = anas[self._keep_channels, :]
+            else:
+                anas_keep = anas
             self._analog_signals = [AnalogSignal(
                 channel_id=range(anas_keep.shape[0]),
                 signal=anas_keep,

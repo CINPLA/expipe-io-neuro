@@ -133,15 +133,12 @@ def generate_tracking(exdir_path):
     position = camera.require_group("Position")
     position.attrs['start_time'] = 0 * pq.s
     position.attrs['stop_time'] = openephys_file.duration
-    tracking_data = openephys_file.tracking
-    times, coords = tracking_data.times, tracking_data.positions
-    print(times.shape, coords.shape)
-    tracked_spots = int(coords.shape[1] / 2)  # 2 coordinates per spot
-    for n in range(tracked_spots):
+    tracking_data = openephys_file.tracking[0]
+    for n, (times, coords) in enumerate(zip(tracking_data.times,
+                                            tracking_data.positions)):
         led = position.require_group("led_" + str(n))
-        data = coords[:, n * 2: n * 2 + 2]
-        dset = led.require_dataset('data', data)
-        dset.attrs['num_samples'] = len(data)
+        dset = led.require_dataset('data', coords)
+        dset.attrs['num_samples'] = len(coords)
         dset = led.require_dataset("timestamps", times)
         dset.attrs['num_samples'] = len(times)
         led.attrs['start_time'] = 0 * pq.s
@@ -171,7 +168,7 @@ class OpenEphysFilerecord(Filerecord):
 if __name__ == '__main__':
     openephys_directory = '/home/mikkel/Ephys/1703_2017-04-15_13-34-12'
     exdir_path = '/home/mikkel/apps/expipe-project/openephystest.exdir'
-    probefile = '/home/mikkel/Dropbox/scripting/python/expipe/openephys_channelmap.prb'
+    probefile = '/home/mikkel/Ephys/tetrodes32ch-klusta.prb'
     if op.exists(exdir_path):
         shutil.rmtree(exdir_path)
     convert(openephys_directory=openephys_directory,
