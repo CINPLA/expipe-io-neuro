@@ -14,29 +14,71 @@ import os
 import numpy as np
 import quantities as pq
 import time
-import re
 
 
-class AnalogSignals:
-    def __init__(self, signals, times, sample_rate):
-        self.signals = signals
-        self.times = times
+class Channel:
+    def __init__(self, index, name, gain, channel_id):
+        self.index = index
+        self.id = channel_id
+        self.name = name
+        self.gain = gain
+
+
+class ChannelGroup:
+    def __init__(self, channel_group_id, filename, channels, attrs):
+        self.attrs = attrs
+        self.filename = filename
+        self.channel_group_id = channel_group_id
+        self.channels = channels
+
+    def __str__(self):
+        return "<OpenEphys channel_group {}: channel_count: {}>".format(
+            self.channel_group_id, len(self.channels)
+        )
+
+
+class AnalogSignal:
+    def __init__(self, channel_id, signal, sample_rate):
+        self.signal = signal
+        self.channel_id = channel_id
         self.sample_rate = sample_rate
 
     def __str__(self):
         return "<Intan analog signals:shape: {}, sample_rate: {}>".format(
-            self.signals.shape, self.sample_rate
+            self.signal.shape, self.sample_rate
         )
 
-class DigitalSignals:
-    def __init__(self, dig_in, dig_out, sample_rate):
-        self.dig_in = dig_in
-        self.dig_out = dig_out
+class ADCSignal:
+    def __init__(self, channel_id, signal, sample_rate):
+        self.signal = signal
+        self.channel_id = channel_id
         self.sample_rate = sample_rate
 
     def __str__(self):
-        return "<Intan digital signals:shape: {}, sample_rate: {}>".format(
-            self.dig_in.shape, self.sample_rate
+        return "<Intan ADC signals:shape: {}, sample_rate: {}>".format(
+            self.signal.shape, self.sample_rate
+        )
+
+class DACSignal:
+    def __init__(self, channel_id, signal, sample_rate):
+        self.signal = signal
+        self.channel_id = channel_id
+        self.sample_rate = sample_rate
+
+    def __str__(self):
+        return "<Intan DAC signals:shape: {}, sample_rate: {}>".format(
+            self.signal.shape, self.sample_rate
+        )
+
+class DigitalSignal:
+    def __init__(self, times, channel_id, sample_rate):
+        self.times = times
+        self.channel_id = channel_id
+        self.sample_rate = sample_rate
+
+    def __str__(self):
+        return "<Intan digital signal: nchannels: {}>".format(
+            self.channel_id
         )
 
 class Stimulation:
@@ -56,54 +98,107 @@ class File:
     """
     Class for reading experimental data from an OpenEphys dataset.
     """
-    def __init__(self, filename):
+    def __init__(self, filename, probefile=None, keep_channels=None, zero_channel=None):
         self._absolute_filename = os.path.abspath(filename)
 
         data = load(filename)
 
-        self._analog_signals = AnalogSignals(
-            signals=data['amplifier_data'],
-            times=data['t'],
-            sample_rate=data['frequency_parameters']['amplifier_sample_rate']
-        )
+        self._times = data['t']
+        self._duration = self._times[-1] - self._times[0]
+        self._sample_rate = data['frequency_parameters']['amplifier_sample_rate'] * pq.Hz
 
-        self._digital_signals = DigitalSignals(
-            dig_in=data['board_dig_in_data'],
-            dig_out=data['board_dig_out_data'],
-            sample_rate=data['frequency_parameters']['board_dig_in_sample_rate']
-        )
+        self._analog_signals = [AnalogSignal(
+            signal=data['amplifier_data'],
+            channel_id=np.array([data['amplifier_channels'][ch]['chip_channel']
+                                 for ch in np.arange(len(data['amplifier_channels']))]),
+            sample_rate=self.sample_rate
+        )]
 
-        self._stimulation = Stimulation(
+        self._digital_in_signals = [DigitalSignal(
+            times=data['board_dig_in_data'],
+            channel_id=np.array([data['board_dig_in_channels'][ch]['chip_channel']
+                                 for ch in np.arange(len(data['board_dig_in_channels']))]),
+            sample_rate=self.sample_rate
+        )]
+
+        self._digital_out_signals = [DigitalSignal(
+            times=data['board_dig_out_data'],
+            channel_id=np.array([data['board_dig_out_channels'][ch]['chip_channel']
+                                 for ch in np.arange(len(data['board_dig_out_channels']))]),
+            sample_rate=self.sample_rate
+        )]
+
+        self._adc_signals = [ADCSignal(
+            signal=data['board_adc_data'],
+            channel_id=np.array([data['board_adc_channels'][ch]['chip_channel']
+                                 for ch in np.arange(len(data['board_adc_channels']))]),
+            sample_rate=self.sample_rate
+        )]
+
+        self._dac_signals = [DACSignal(
+            signal=data['board_dac_data'],
+            channel_id=np.array([data['board_dac_channels'][ch]['chip_channel']
+                                 for ch in np.arange(len(data['board_dac_channels']))]),
+            sample_rate=self.sample_rate
+        )]
+
+        self._stimulation = [Stimulation(
             stim_data=data['stim_data'],
             amp_settle=data['amp_settle_data'],
             charge_recovery=data['charge_recovery_data'],
             compliance_limit=data['compliance_limit_data'],
             stim_param=data['stim_parameters']
-        )
+        )]
+
+        # Clear data
+        del data
 
 
     @property
     def session(self):
         return self._absolute_filename
 
+    @property
+    def duration(self):
+        return self._duration
+
+    @property
+    def sample_rate(self):
+            return self._sample_rate
 
     @property
     def analog_signals(self):
         return self._analog_signals
 
     @property
-    def digital_signals(self):
-        return self._digital_signals
+    def adc_signals(self):
+        return self._adc_signals
+
+    @property
+    def dac_signals(self):
+        return self._dac_signals
+
+    @property
+    def digital_in_signals(self):
+        return self._digital_in_signals
+
+    @property
+    def digital_out_signals(self):
+        return self._digital_out_signals
 
     @property
     def stimulation(self):
         return self._stimulation
 
+    @property
+    def times(self):
+        return self._times
 
-def load(filepath, savedat=False):
+
+def load(filepath):
     # redirects to code for individual file types
     if 'rhs' in filepath:
-        data = loadRHS(filepath, savedat)
+        data = loadRHS(filepath)
     elif 'rhd' in filepath:
         print('to be implemented soon')
         data = []
@@ -113,7 +208,7 @@ def load(filepath, savedat=False):
     return data
 
 
-def loadRHS(filepath, savedat=False):
+def loadRHS(filepath):
     data = {}
 
     t1 = time.time()
@@ -271,7 +366,7 @@ def loadRHS(filepath, savedat=False):
                 signal_type = np.fromfile(f, 'i2', 1)[0]
                 channel_enabled = np.fromfile(f, 'i2', 1)[0]
                 new_channel['chip_channel'] = np.fromfile(f, 'i2', 1)[0]
-                np.fromfile(f, 'i2', 1)[0] # ignore command_stream
+                shift = np.fromfile(f, 'i2', 1)[0] # ignore command_stream
                 new_channel['board_stream'] = np.fromfile(f, 'i2', 1)[0]
                 new_trigger_channel['voltage_trigger_mode'] = np.fromfile(f, 'i2', 1)[0]
                 new_trigger_channel['voltage_threshold'] = np.fromfile(f, 'i2', 1)[0]
@@ -383,9 +478,7 @@ def loadRHS(filepath, savedat=False):
         stim_data = np.zeros((num_amplifier_channels, num_amplifier_samples))
         board_adc_data = np.zeros((num_board_adc_channels, num_board_adc_samples))
         board_dac_data = np.zeros((num_board_dac_channels, num_board_dac_samples))
-        board_dig_in_data = np.zeros((num_board_dig_in_channels, num_board_dig_in_samples))
         board_dig_in_raw = np.zeros(num_board_dig_in_samples)
-        board_dig_out_data = np.zeros((num_board_dig_out_channels, num_board_dig_out_samples))
         board_dig_out_raw = np.zeros(num_board_dig_out_samples)
 
         # Read sampled data from file.
@@ -459,51 +552,6 @@ def loadRHS(filepath, savedat=False):
 
         print('Parsing data')
 
-        # # Extract digital input channels to separate variables.
-        # '''FIX THIS'''
-        # for i in range(num_board_dig_in_channels):
-        #     # print(len(board_dig_in_channels)
-        #     mask = (2 ** board_dig_in_channels[i]['native_order']) * np.ones(len(board_dig_in_raw))
-        #     # board_dig_in_data[i,:] = (board_dig_in_raw & mask > 0)
-        #
-        # for i in range(num_board_dig_out_channels):
-        #     mask = (2 ** board_dig_out_channels[i]['native_order']) * np.ones(len(board_dig_out_raw))
-        #     # board_dig_in_data[i, :] = (board_dig_out_raw & mask > 0)
-
-
-        #TODO optimize memory-wise: e.g. only save time and chan of compliance, ampsett, charge recovery as list
-        # Scale voltage levels appropriately.
-        amplifier_data -= 32768  # units = microvolts
-        amplifier_data *= 0.195  # units = microvolts
-        if dc_amp_data_saved != 0:
-            dc_amplifier_data -= 512  # units = volts
-            dc_amplifier_data *= -0.01923  # units = volts
-
-        stim_polarity = np.zeros((num_amplifier_channels, num_amplifier_samples))
-
-        compliance_limit_data_idx = np.where(stim_data >= 2 ** 15)
-        stim_data[compliance_limit_data_idx] = 0
-        charge_recovery_data_idx = np.where(stim_data >= 2 ** 14)
-        stim_data[charge_recovery_data_idx] = 0
-        amp_settle_data_idx = np.where(stim_data >= 2 ** 13)
-        stim_data[amp_settle_data_idx] = 0
-
-        stim_polarity_idx = np.where(stim_data >= 2 ** 8)
-        stim_polarity[stim_polarity_idx] = 1
-        stim_data[stim_polarity_idx] = 0
-        stim_polarity = 1 - 2 * stim_polarity  # convert(0 = pos, 1 = neg) to + / -1
-        stim_data *= stim_polarity
-        stim_data = stim_parameters['stim_step_size'] * stim_data / float(1e-6)  # units = microamps
-
-        board_adc_data =-32768  # units = volts
-        board_adc_data *= 312.5e-6  # units = volts
-        board_dac_data -= 32768  # units = volts
-        board_dac_data *= 312.5e-6  # units = volts
-
-        amp_settle_data = np.array((num_amplifier_channels, None))
-        charge_recovery_data = np.array((num_amplifier_channels, None))
-        compliance_limit_data = np.array((num_amplifier_channels, None))
-
         # Check for gaps in timestamps.
         num_gaps = len(np.where(np.diff(t) != 1)[0])
         if num_gaps == 0:
@@ -513,13 +561,109 @@ def loadRHS(filepath, savedat=False):
         # Scale time steps (units = seconds).
         t /= float(sample_rate)
 
-        for chan in range(num_amplifier_channels):
-            if len(amp_settle_data_idx[0]) != 0:
-                amp_settle_data[chan] = t[amp_settle_data_idx[1][np.where(amp_settle_data_idx[0]==chan)]]
-            if len(charge_recovery_data_idx[0]) != 0:
-                charge_recovery_data[chan] = t[charge_recovery_data_idx[1][np.where(charge_recovery_data_idx[0] == chan)]]
-            if len(compliance_limit_data_idx[0]) != 0:
-                compliance_limit_data[chan] = t[compliance_limit_data_idx[1][np.where(compliance_limit_data_idx[0] == chan)]]
+        # # Extract digital input channels times separate variables.
+        if np.count_nonzero(board_dig_in_raw) != 0:
+            board_dig_in_data = []
+            for i in range(num_board_dig_in_channels):
+                # find idx of high level
+                idx_high = np.where(board_dig_in_raw == board_dig_in_channels[i]['native_order'])
+                rising, falling = get_rising_falling_edges(idx_high)
+                board_dig_in_data.append(t[rising])
+            board_dig_in_data = np.array(board_dig_in_data)
+        else:
+            print('No digital input data')
+            board_dig_in_data = np.array([])
+
+        if np.count_nonzero(board_dig_out_raw) != 0:
+            board_dig_out_data = []
+            for i in range(num_board_dig_out_channels):
+                # find idx of high level
+                idx_high = np.where(board_dig_out_raw == board_dig_in_channels[i]['native_order'])
+                rising, falling = get_rising_falling_edges(idx_high)
+                board_dig_out_data.append(t[rising])
+            board_dig_out_data = np.array(board_dig_out_data)
+        else:
+            print('No digital output data')
+            board_dig_out_data = np.array([])
+
+        # Clear variables
+        del board_dig_out_raw
+        del board_dig_in_raw
+
+        #TODO optimize memory-wise: e.g. only save time and chan of compliance, ampsett, charge recovery as list
+        # Scale voltage levels appropriately.
+        amplifier_data -= 32768  # units = microvolts
+        amplifier_data *= 0.195  # units = microvolts
+        if dc_amp_data_saved != 0:
+            dc_amplifier_data -= 512  # units = volts
+            dc_amplifier_data *= -0.01923  # units = volts
+
+        if np.count_nonzero(stim_data) != 0:
+            # TODO only save stim channel and respective signal
+            stim_polarity = np.zeros((num_amplifier_channels, num_amplifier_samples))
+
+            compliance_limit_data_idx = np.where(stim_data >= 2 ** 15)
+            stim_data[compliance_limit_data_idx] -= 2 ** 15
+            charge_recovery_data_idx = np.where(stim_data >= 2 ** 14)
+            stim_data[charge_recovery_data_idx] -= 2 ** 14
+            amp_settle_data_idx = np.where(stim_data >= 2 ** 13)
+            stim_data[amp_settle_data_idx] -= 2 ** 13
+
+            stim_polarity_idx = np.where(stim_data >= 2 ** 8)
+            stim_polarity[stim_polarity_idx] = 1
+            stim_data[stim_polarity_idx] -= 2 ** 8
+            stim_polarity = 1 - 2 * stim_polarity  # convert(0 = pos, 1 = neg) to + / -1
+            stim_data *= stim_polarity
+            stim_data = stim_parameters['stim_step_size'] * stim_data / float(1e-6)  # units = microamps
+
+            # Clear variables
+            del stim_polarity
+
+            amp_settle_data = []
+            charge_recovery_data = []
+            compliance_limit_data = []
+
+            for chan in np.arange(num_amplifier_channels):
+                if len(np.where(amp_settle_data_idx[0] == chan)[0]) != 0:
+                    amp_settle_data.append(t[amp_settle_data_idx[1][np.where(amp_settle_data_idx[0] == chan)[0]]])
+                else:
+                    amp_settle_data.append([])
+                if len(np.where(charge_recovery_data_idx[0] == chan)[0]) != 0:
+                    charge_recovery_data.append(
+                        t[charge_recovery_data_idx[1][np.where(charge_recovery_data_idx[0] == chan)[0]]])
+                else:
+                    charge_recovery_data.append([])
+                if len(np.where(compliance_limit_data_idx[0] == chan)[0]) != 0:
+                    compliance_limit_data.append(
+                        t[compliance_limit_data_idx[1][np.where(compliance_limit_data_idx[0] == chan)[0]]])
+                else:
+                    compliance_limit_data.append([])
+
+            amp_settle_data = np.array(amp_settle_data)
+            charge_recovery_data = np.array(charge_recovery_data)
+            compliance_limit_data = np.array(compliance_limit_data)
+        else:
+            print('No stimulation data')
+            stim_data = np.array([])
+            amp_settle_data = np.array([])
+            charge_recovery_data = np.array([])
+            compliance_limit_data = np.array([])
+
+        if np.count_nonzero(board_adc_data) != 0:
+            board_adc_data -= 32768  # units = volts
+            board_adc_data *= 312.5e-6  # units = volts
+        else:
+            del board_adc_data
+            print('No ADC data')
+            board_adc_data = np.array([])
+
+        if np.count_nonzero(board_dac_data) != 0:
+            board_dac_data -= 32768  # units = volts
+            board_dac_data *= 312.5e-6  # units = volts
+        else:
+            del board_dac_data
+            print('No DAC data')
+            board_dac_data = np.array([])
 
         t3 = time.time()
         print('Parsing done. time: ', t3 - t2)
@@ -554,6 +698,7 @@ def loadRHS(filepath, savedat=False):
             data['board_adc_data'] = board_adc_data
     else:
         data['board_adc_data'] = np.array([])
+        data['board_adc_channels'] = np.array([])
 
     if num_board_dac_channels > 0:
         data['board_dac_channels'] = board_dac_channels
@@ -561,6 +706,7 @@ def loadRHS(filepath, savedat=False):
             data['board_dac_data'] = board_dac_data
     else:
         data['board_dac_data'] = np.array([])
+        data['board_dac_channels'] = np.array([])
 
     if num_board_dig_in_channels > 0:
         data['board_dig_in_channels'] = board_dig_in_channels
@@ -568,6 +714,7 @@ def loadRHS(filepath, savedat=False):
             data['board_dig_in_data'] = board_dig_in_data
     else:
         data['board_dig_in_data'] = np.array([])
+        data['board_dig_in_channels'] = np.array([])
 
 
     if num_board_dig_out_channels > 0:
@@ -576,6 +723,7 @@ def loadRHS(filepath, savedat=False):
             data['board_dig_out_data'] = board_dig_out_data
     else:
         data['board_dig_out_data'] = np.array([])
+        data['board_dig_out_channels'] = np.array([])
 
 
     if data_present:
@@ -583,14 +731,8 @@ def loadRHS(filepath, savedat=False):
     else:
         print('Extracted waveform information is now available in the python workspace.')
 
-
-    if savedat:
-        print('Writing ' + filepath[:-4] + '.dat.')
-        fdat = filepath[:-4] + '.dat'
-        with open(fdat, 'wb') as f:
-            np.transpose(amplifier_data).tofile(f)
-
     return data
+
 
 def fread_QString(f):
 
@@ -609,6 +751,7 @@ def fread_QString(f):
         a += newchar.tostring().decode('utf-16')
     return a
 
+
 def plural(n):
 
     # s = plural(n)
@@ -622,3 +765,27 @@ def plural(n):
         s = 's'
 
     return s
+
+def get_rising_falling_edges(idx_high):
+    '''
+
+    :param idx_high: indeces where dig signal is '1'
+    :return: rising and falling indices lists
+    '''
+    rising = []
+    falling = []
+
+    idx_high = idx_high[0]
+
+    if len(idx_high) != 0:
+        for i, idx in enumerate(idx_high[:-1]):
+            if i==0:
+                # first idx is rising
+                rising.append(idx)
+            else:
+                if idx_high[i+1] != idx + 1:
+                    falling.append(idx)
+                if idx - 1 != idx_high[i-1]:
+                    rising.append(idx)
+
+    return rising, falling

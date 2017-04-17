@@ -30,11 +30,17 @@ from xmljson import yahoo as yh
 from datetime import datetime
 from six import exec_
 from copy import copy
+import locale
+import struct
+
 
 # TODO related files
 # TODO append .continuous files directly to file and memory map in the end
 # TODO ChannelGroup class - needs probe file
 # TODO Channel class
+
+
+# TODO add SYNC and TRACKERSTIM metadata
 
 MAX_NUMBER_OF_EVENTS = int(1e6)
 
@@ -78,8 +84,11 @@ class AnalogSignal:
 
     @property
     def times(self):
-        nsamples = self.signal.shape[1]
-        return np.arange(nsamples) / self.sample_rate
+        if self.signal.shape[0] > 0:
+            nsamples = self.signal.shape[1]
+            return np.arange(nsamples) / self.sample_rate
+        else:
+            return np.array([])
 
     def __str__(self):
         return "<OpenEphys analog signal:shape: {}, sample_rate: {}>".format(
@@ -88,13 +97,25 @@ class AnalogSignal:
 
 
 class DigitalSignal:
-    def __init__(self, channel_id, times, sample_rate):
+    def __init__(self, times, channel_id, sample_rate):
         self.times = times
         self.channel_id = channel_id
         self.sample_rate = sample_rate
 
     def __str__(self):
         return "<OpenEphys digital signal: nchannels: {}>".format(
+            self.channel_id
+        )
+
+
+class Sync:
+    def __init__(self, times, channel_id, sample_rate):
+        self.times = times
+        self.channel_id = channel_id
+        self.sample_rate = sample_rate
+
+    def __str__(self):
+        return "<OpenEphys sync signal: nchannels: {}>".format(
             self.channel_id
         )
 
@@ -115,10 +136,8 @@ class File:
     """
     Class for reading experimental data from an OpenEphys dataset.
     """
-    def __init__(self, foldername, probefile, keep_channels=None):
+    def __init__(self, foldername, probefile=None):
         # TODO assert probefile is a probefile
-        # TODO use keep_channel to let the user select which channels to retain
-        # (I recorded an extra chan once and at the moment there would be no way to load it properly
         # TODO add default prb map and allow to add it later
         self._absolute_foldername = foldername
         self._path, relative_foldername = os.path.split(foldername)
@@ -128,12 +147,17 @@ class File:
         self._tracking_dirty = True
         self._events_dirty = True
 
-        self._keep_channels = keep_channels
-
         # TODO: support for multiple exp in same folder
         filenames = [f for f in os.listdir(self._absolute_foldername)]
         if not any(sett == 'settings.xml' for sett in filenames):
             raise ValueError("'setting.xml' should be in the folder")
+
+        if not any('.eventsmessages' in f for f in filenames):
+            raise ValueError("'.eventsmessages' should be in the folder")
+        else:
+            messagefile = [f for f in filenames if '.eventsmessages' in f][0]
+            with open(op.join(self._absolute_foldername, messagefile), "r") as fh:
+                self._software_sample_rate, self._start_exp = self._read_software_rate(fh)
 
         self.rhythm = False
         self.rhythmID = []
@@ -145,112 +169,40 @@ class File:
         self.oscAddress = []
         self.tracking_timesamples_rate = 1000 * 1000. * pq.Hz
 
-        print('Reading settings.xml...')
-        with open(op.join(self._absolute_foldername, 'settings.xml')) as f:
+        self.sync = False
+        self.syncID = []
+
+        print('Loading Open-Ephys: reading settings.xml...')
+        self._set_fname = op.join(self._absolute_foldername, 'settings.xml')
+        with open(self._set_fname) as f:
             xmldata = f.read()
             self.settings = yh.data(ET.fromstring(xmldata))['SETTINGS']
-        self._start_datetime = datetime #.strptime(self.settings['INFO']['DATE'],
-                                        #         '%d %b %Y %H:%M:%S')
+        # read date in US formate
+        locale.setlocale(locale.LC_ALL, 'en_US.UTF8')
+        self._start_datetime = datetime.strptime(self.settings['INFO']['DATE'], '%d %b %Y %H:%M:%S')
         self._channel_info = {}
         self.nchan = 0
         FPGA_count = 0
-        if type(self.settings['SIGNALCHAIN']) is list:
-            for sigchain in self.settings['SIGNALCHAIN']:
-                if type(sigchain['PROCESSOR']) is list:
-                    for processor in sigchain['PROCESSOR']:
-                        # print(processor['name'])
-                        if processor['name'] == 'Sources/Rhythm FPGA':
-                            assert FPGA_count == 0
-                            FPGA_count += 1
-                            # TODO can there be multiple FPGAs ?
-                            self._channel_info['channels'] = []
-                            self._channel_info['gain'] = []
-                            self.rhythm = True
-                            self.rhythmID = processor['NodeId']
-                            gain = {ch['number']: ch['gain']
-                                    for chs in processor['CHANNEL_INFO'].values()
-                                    for ch in chs}
-                            for chan in processor['CHANNEL']:
-                                if chan['SELECTIONSTATE']['record'] == '1':
-                                    self.nchan += 1
-                                    chnum = chan['number']
-                                    self._channel_info['channels'].append(int(chnum))
-                                    self._channel_info['gain'].append(float(gain[chnum]))
-                                sampleIdx = int(processor['EDITOR']['SampleRate'])-1
-                                self.sample_rate = rhythmRates[sampleIdx] * 1000. * pq.Hz
-                        if processor['name'] == 'Sources/OSC Port':
-                            self.osc = True
-                            self.oscID.append(processor['NodeId'])
-                            self.oscPort.append(processor['EDITOR']['OSCNODE']['port'])
-                            self.oscAddress.append(processor['EDITOR']['OSCNODE']['address'])
-                else:
-                    processor = sigchain['PROCESSOR']
-                    # print(processor['name'])
-                    if processor['name'] == 'Sources/Rhythm FPGA':
-                        assert FPGA_count == 0
-                        FPGA_count += 1
-                        # TODO can there be multiple FPGAs ?
-                        self._channel_info['channels'] = []
-                        self._channel_info['gain'] = []
-                        self.rhythm = True
-                        self.rhythmID = processor['NodeId']
-                        gain = {ch['number']: ch['gain']
-                                for chs in processor['CHANNEL_INFO'].values()
-                                for ch in chs}
-                        for chan in processor['CHANNEL']:
-                            if chan['SELECTIONSTATE']['record'] == '1':
-                                self.nchan += 1
-                                chnum = chan['number']
-                                self._channel_info['channels'].append(int(chnum))
-                                self._channel_info['gain'].append(float(gain[chnum]))
-                            sampleIdx = int(processor['EDITOR']['SampleRate']) - 1
-                            self.sample_rate = rhythmRates[sampleIdx] * 1000. * pq.Hz
-                        print('RhythmFPGA with ', self.nchan, ' channels. NodeId: ', self.rhythmID)
-                    if processor['name'] == 'Sources/OSC Port':
-                        self.osc = True
-                        self.oscID.append(processor['NodeId'])
-                        self.oscPort.append(processor['EDITOR']['OSCNODE']['port'])
-                        self.oscAddress.append(processor['EDITOR']['OSCNODE']['address'])
+        if isinstance(self.settings['SIGNALCHAIN'], list):
+            sigchain_iter = self.settings['SIGNALCHAIN']
         else:
-            sigchain = self.settings['SIGNALCHAIN']
-            if type(sigchain['PROCESSOR']) is list:
-                for processor in sigchain['PROCESSOR']:
-                    # print(processor['name'])
-                    if processor['name'] == 'Sources/Rhythm FPGA':
-                        assert FPGA_count == 0
-                        FPGA_count += 1
-                        # TODO can there be multiple FPGAs ?
-                        self._channel_info['channels'] = []
-                        self._channel_info['gain'] = []
-                        self.rhythm = True
-                        self.rhythmID = processor['NodeId']
-                        gain = {ch['number']: ch['gain']
-                                for chs in processor['CHANNEL_INFO'].values()
-                                for ch in chs}
-                        for chan in processor['CHANNEL']:
-                            if chan['SELECTIONSTATE']['record'] == '1':
-                                self.nchan += 1
-                                chnum = chan['number']
-                                self._channel_info['channels'].append(int(chnum))
-                                self._channel_info['gain'].append(float(gain[chnum]))
-                            sampleIdx = int(processor['EDITOR']['SampleRate']) - 1
-                            self.sample_rate = rhythmRates[sampleIdx] * 1000. * pq.Hz
-                    if processor['name'] == 'Sources/OSC Port':
-                        self.osc = True
-                        self.oscID.append(processor['NodeId'])
-                        self.oscPort.append(processor['EDITOR']['OSCNODE']['port'])
-                        self.oscAddress.append(processor['EDITOR']['OSCNODE']['address'])
+            sigchain_iter = [self.settings['SIGNALCHAIN']]
+        for sigchain in sigchain_iter:
+            if isinstance(sigchain['PROCESSOR'], list):
+                processor_iter = sigchain['PROCESSOR']
             else:
-                processor = sigchain['PROCESSOR']
+                processor_iter = [sigchain['PROCESSOR']]
+            for processor in processor_iter:
                 # print(processor['name'])
                 if processor['name'] == 'Sources/Rhythm FPGA':
-                    assert FPGA_count == 0
+                    if FPGA_count > 0:
+                        raise NotImplementedError
+                        # TODO can there be multiple FPGAs ?
                     FPGA_count += 1
-                    # TODO can there be multiple FPGAs ?
-                    self._channel_info['channels'] = []
-                    self._channel_info['gain'] = []
+                    self._channel_info['gain'] = {}
                     self.rhythm = True
                     self.rhythmID = processor['NodeId']
+                    # gain for all channels
                     gain = {ch['number']: ch['gain']
                             for chs in processor['CHANNEL_INFO'].values()
                             for ch in chs}
@@ -258,16 +210,18 @@ class File:
                         if chan['SELECTIONSTATE']['record'] == '1':
                             self.nchan += 1
                             chnum = chan['number']
-                            self._channel_info['channels'].append(int(chnum))
-                            self._channel_info['gain'].append(float(gain[chnum]))
-                        sampleIdx = int(processor['EDITOR']['SampleRate']) - 1
-                        self.sample_rate = rhythmRates[sampleIdx] * 1000. * pq.Hz
-                    print('RhythmFPGA with ', self.nchan, ' channels. NodeId: ', self.rhythmID)
+                            self._channel_info['gain'][chnum] = float(gain[chnum])
+                        sampleIdx = int(processor['EDITOR']['SampleRate'])-1
+                        self._sample_rate = rhythmRates[sampleIdx] * 1000. * pq.Hz
                 if processor['name'] == 'Sources/OSC Port':
                     self.osc = True
                     self.oscID.append(processor['NodeId'])
                     self.oscPort.append(processor['EDITOR']['OSCNODE']['port'])
                     self.oscAddress.append(processor['EDITOR']['OSCNODE']['address'])
+                if processor['name'] == 'Sources/Sync Port':
+                    self.sync = True
+                    self.syncID = processor['NodeId']
+
 
         # Check openephys format
         if self.settings['CONTROLPANEL']['recordEngine'] == 'OPENEPHYS':
@@ -278,29 +232,47 @@ class File:
             self._format = None
         print('Decoding data from ', self._format, ' format')
 
-        # # TODO move duration in analog_signals property. What if openephys only used for tracking or other?
-        # self._duration = (self.analog_signals[0].signal.shape[1] /
-        #                   self.analog_signals[0].sample_rate)
-
         if self.rhythm:
             print('RhythmFPGA with ', self.nchan, ' channels. NodeId: ', self.rhythmID)
         if self.osc:
             print('OSC Port. NodeId: ', self.oscID)
 
-        # TODO: channel mapping only if FPGA is present
         if self.rhythm:
-            sort_idx = np.argsort(self._channel_info['channels'])
-            self._channel_info['channels'] = np.array(self._channel_info['channels'])[sort_idx]
-            self._channel_info['gain'] = np.array(self._channel_info['gain'])[sort_idx]
-            self._channel_group_info = _read_python(probefile)['channel_groups']
-            for group in self._channel_group_info.values():
-                group['filemap'] = []
-                group['gain'] = []
-                # prb file channels are sequential, 'channels' are not as they depend on FPGA channel selection -> Collapse them into array
-                for chan in group['channels']:
-                    idx = self._channel_info['channels'].tolist()[chan]
-                    group['filemap'].append(idx)
-                    group['gain'].append(self._channel_info['gain'][chan])
+            recorded_channels = sorted([int(chan) for chan in
+                                        self._channel_info['gain'].keys()])
+            self._channel_info['channels'] = recorded_channels
+            if probefile is not None:
+                self._probefile_ch_mapping = _read_python(probefile)['channel_groups']
+                for group_idx, group in self._probefile_ch_mapping.items():
+                    group['gain'] = []
+                    # prb file channels are sequential, 'channels' are not as they depend on FPGA channel selection -> Collapse them into array
+                    for chan, oe_chan in zip(group['channels'],
+                                             group['oe_channels']):
+                        if oe_chan not in recorded_channels:
+                            raise ValueError('Channel "' + str(oe_chan) +
+                                             '" in channel group "' +
+                                             str(group_idx) + '" in probefile' +
+                                             probefile +
+                                             ' is not marked as recorded ' +
+                                             'in settings file' +
+                                             self._set_fname)
+                        if recorded_channels.index(oe_chan) != chan:
+                            print(oe_chan)
+                            print(recorded_channels.index(oe_chan))
+                            print(chan)
+                            raise ValueError('Channel mapping does not match ' +
+                                             'sequence of recorded channels')
+                        group['gain'].append(
+                            self._channel_info['gain'][str(oe_chan)]
+                        )
+                self._keep_channels = [chan for group in
+                                       self._probefile_ch_mapping.values()
+                                       for chan in group['channels']]
+                print('Number of selected channels: ', len(self._keep_channels))
+            else:
+                self._keep_channels = None # HACK
+                # TODO sequential channel mapping
+                print('sequential channel mapping')
 
     @property
     def session(self):
@@ -308,7 +280,24 @@ class File:
 
     @property
     def duration(self):
+        if self.rhythm:
+            self._duration = (self.analog_signals[0].signal.shape[1] /
+                              self.analog_signals[0].sample_rate)
+        elif self.osc:
+            self._duration = (len(self.tracking[0].positions[0]) /
+                              self.tracking[0].attrs['sample_rate'])
+        else:
+            self._duration = []
+
         return self._duration
+
+    @property
+    def sample_rate(self):
+        if self.rhythm:
+            return self._sample_rate
+        else:
+            return self._software_sample_rate
+
 
     def channel_group(self, channel_id):
         if self._channel_groups_dirty:
@@ -338,9 +327,16 @@ class File:
         return self._digital_signals
 
     @property
+    def sync_signals(self):
+        if self._digital_signals_dirty:
+            self._read_digital_signals()
+
+        return self._sync_signals
+
+    @property
     def events(self):
         if self._events_dirty:
-            self._read_events()
+            self._read_digital_signals()
 
         return self._events
 
@@ -351,22 +347,36 @@ class File:
 
         return self._tracking
 
+
+    def _read_software_rate(self, fh):
+        spl = fh.readline().split()
+        if any(['Software' in s for s in spl]):
+            stime = spl[-1]
+            stime = stime.split('@')
+            start = stime[0]
+            sample_rate = float(stime[-1][:-2]) * pq.Hz
+        else:
+            start = sample_rate = []
+
+        return sample_rate, start
+
+
     def _read_channel_groups(self):
         self._channel_id_to_channel_group = {}
         self._channel_group_id_to_channel_group = {}
         self._channel_count = 0
         self._channel_groups = []
-        for channel_group_id, channel_group_content in self._channel_group_info.items():
-            num_chans = len(channel_group_content['channels'])
+        for channel_group_id, channel_info in self._probefile_ch_mapping.items():
+            num_chans = len(channel_info['channels'])
             self._channel_count += num_chans
             channels = []
-            for idx, channel_id in enumerate(channel_group_content['filemap']):
+            for idx, chan in enumerate(channel_info['channels']):
                 channel = Channel(
                     index=idx,
-                    channel_id=channel_id,
-                    name="channel_{}_channel_group_{}".format(channel_id,
+                    channel_id=chan,
+                    name="channel_{}_channel_group_{}".format(chan,
                                                               channel_group_id),
-                    gain=channel_group_content['gain'][idx]
+                    gain=channel_info['gain'][idx]
                 )
                 channels.append(channel)
 
@@ -388,8 +398,8 @@ class File:
             self._channel_groups.append(channel_group)
             self._channel_group_id_to_channel_group[channel_group_id] = channel_group
 
-            for channel_id in channel_group_content['channels']:
-                self._channel_id_to_channel_group[channel_id] = channel_group
+            for chan in channel_info['channels']:
+                self._channel_id_to_channel_group[chan] = channel_group
 
         # TODO channel mapping to file
         self._channel_ids = np.arange(self._channel_count)
@@ -400,12 +410,8 @@ class File:
         if self.osc is True and any('.eventsbinary' in f for f in filenames):
             posfile = [f for f in filenames if '.eventsbinary' in f][0]
             print('.eventsbinary: ', posfile)
-            # if sys.version_info > (3, 0):
-            with open(op.join(self._absolute_foldername, posfile), "r", encoding='utf-8', errors='ignore') as fh:
+            with open(op.join(self._absolute_foldername, posfile), "rb") as fh: #, encoding='utf-8', errors='ignore') as fh:
                 self._read_tracking_events(fh)
-            # else:
-            #     with open(op.join(self._absolute_foldername, posfile), "r") as fh:
-            #         self._read_tracking_events(fh)
         else:
             raise ValueError("'.eventsbinary' should be in the folder")
 
@@ -418,40 +424,33 @@ class File:
         if float(header['version']) < 0.4:
             raise Exception('Loader is only compatible with .events files with version 0.4 or higher')
 
-        index = -1
+        # TODO consider reading the entire file and unpack it
+        struct_fmt = '=Bq4f'  # int[5], float, byte[255]
+        struct_len = struct.calcsize(struct_fmt)
+        struct_unpack = struct.Struct(struct_fmt).unpack_from
 
-        ids = np.array([])
-        timestamps = np.array([])
-        x = np.array([])
-        y = np.array([])
-        h = np.array([])
-        w = np.array([])
-
-        nsamples = (os.fstat(fh.fileno()).st_size -fh.tell()) // 25
+        nsamples = (os.fstat(fh.fileno()).st_size -fh.tell()) // struct_len
         print('Estimated position samples: ', nsamples)
         nread = 0
 
-        while fh.tell() < os.fstat(fh.fileno()).st_size:
-
-            index += 1
-
-            idcurr = np.fromfile(fh, '<u1', 1)
-            tcurr = np.fromfile(fh, np.dtype('<i8'), 1)
-            xcurr = np.fromfile(fh, np.dtype('<f4'), 1)
-            ycurr = np.fromfile(fh, np.dtype('<f4'), 1)
-            wcurr = np.fromfile(fh, np.dtype('<f4'), 1)
-            hcurr = np.fromfile(fh, np.dtype('<f4'), 1)
-
-            ids = np.append(ids, idcurr)
-            timestamps = np.append(timestamps, tcurr)
-            x = np.append(x, xcurr)
-            y = np.append(y, ycurr)
-            w = np.append(w, wcurr)
-            h = np.append(h, hcurr)
-
-            nread += 1
+        read_data=[]
+        while True:
+            bytes = fh.read(struct_len)
+            if not bytes:
+                break
+            s = struct_unpack(bytes)
+            read_data.append(s)
+            nread+=1
 
         print('Read position samples: ', nread)
+
+        ids, timestamps, x, y, w, h = zip(*read_data)
+        ids = np.array(ids)
+        timestamps = np.array(timestamps)
+        x = np.array(x)
+        y = np.array(y)
+        w = np.array(w)
+        h = np.array(h)
 
         ts = timestamps / 1000.
 
@@ -459,17 +458,14 @@ class File:
         if len(np.unique(ids)) == 1:
             print("Single tracking source")
 
-            # adjust times with linear interpolation
-            idx_non_zero = np.where(ts != 0)
-            linear_coeff = np.polyfit(np.arange(len(ts))[idx_non_zero], ts[idx_non_zero], 1)
-            times_fit = linear_coeff[0]*(np.arange(len(ts))) + linear_coeff[1]
-            difft = np.diff(times_fit)
+            difft = np.diff(ts)
             avg_period = np.mean(difft)
-            sample_rate_s = np.round(1./float(avg_period)) * pq.Hz
+            sample_rate_s = 1./float(avg_period) * pq.Hz
 
             # Camera (0,0) is top left corner -> adjust y
-            coord_s = np.array([x, 1-y])
-            ts_s = times_fit
+            # coord_s = np.array([x, 1-y])
+            coord_s = [np.array([x, y])]
+            ts_s = [ts]
 
             width_s = np.mean(w)
             height_s = np.mean(h)
@@ -490,23 +486,19 @@ class File:
                 h_ = np.squeeze(h[np.where(ids==ss)])
                 ts_ = np.squeeze(ts[np.where(ids==ss)])
 
-                # adjust times with linear interpolation
-                idx_non_zero = np.where(ts_ != 0)
-                linear_coeff = np.polyfit(np.arange(len(ts_))[idx_non_zero], ts_[idx_non_zero], 1)
-                times_fit = linear_coeff[0]*(np.arange(len(ts_))) + linear_coeff[1]
-                difft = np.diff(times_fit)
+                difft = np.diff(ts_)
                 avg_period = np.mean(difft)
-                sample_rate_ = np.round(1./float(avg_period)) * pq.Hz
+                sample_rate_ = 1./float(avg_period) * pq.Hz
 
                 # Camera (0,0) is top left corner -> adjust y
-                coord_ = np.array([x_, 1-y_])
+                # coord_ = np.array([x_, 1-y_])
+                coord_ = np.array([x_, y_])
                 coord_s.append(coord_)
-                ts_s.append(times_fit)
+                ts_s.append(ts_)
 
                 sample_rate_s.append(sample_rate_)
                 width_s.append(np.mean(w_))
                 height_s.append(np.mean(h_))
-
             attrs = dict()
             attrs['sample_rate'] = np.array(sample_rate_s)
             attrs['length_scale'] = np.array([width_s, height_s])
@@ -524,62 +516,56 @@ class File:
         self._tracking_dirty = False
 
     def _read_analog_signals(self):
-        # Check and decode files
-        filenames = [f for f in os.listdir(self._absolute_foldername)]
-        anas = np.array([])
-        timestamps = np.array([])
-        if self._format == 'binary':
-            if self.rhythm is True:
+        if self.rhythm:
+            # Check and decode files
+            filenames = [f for f in os.listdir(self._absolute_foldername)]
+            if self._format == 'binary':
                 if any('.dat' in f for f in filenames):
                     datfile = [f for f in filenames if '.dat' in f and 'experiment' in f][0]
                     print('.dat: ', datfile)
                     with open(op.join(self._absolute_foldername, datfile), "rb") as fh:
                         anas, nsamples = read_analog_binary_signals(fh, self.nchan)
-                    # Keep only selected channels
-                    if self._keep_channels is not None:
-                        # Compare recorded and keep_channels to find idx
-                        idx = []
-                        for ch in self._keep_channels:
-                            if len(np.argwhere(self._channel_info['channels'] == ch)) == 1:
-                                idx.append(np.argwhere(self._channel_info['channels'] == ch).item())
-                            elif len(np.argwhere(self._channel_info['channels'] == ch)) == 0:
-                                raise ValueError('Some channels in keep_channels were not recorded')
-                        anas_keep = anas[idx].astype('float32')
-                        for i, ch in enumerate(idx):
-                            anas_keep[i] = anas_keep[i]*self._channel_info['gain'][ch]
-                    else:
-                        anas_keep = anas.astype('float32')
-                        for ch, i in self._channel_info['channels']:
-                            anas_keep[i] = float(anas_keep[i])*self._channel_info['gain'][ch]
                 else:
                     raise ValueError("'experiment_###.dat' should be in the folder")
-            else:
-                print('No rhythm FPGA data')
-        elif self._format == 'openephys':
-            # Find continuous CH data
-            contFiles = [f for f in os.listdir(self._absolute_foldername) if 'continuous' in f and 'CH' in f]
-            contFiles = sorted(contFiles)
-            if len(contFiles) != 0:
-                print('Reading all channels')
-                for f in contFiles:
-                    fullpath = op.join(self._absolute_foldername, f)
-                    sig = read_analog_continuous_signal(fullpath)
-                    if anas.shape[0] < 1:
-                        anas = sig['data'][None, :]
-                    else:
-                        if sig['data'].size == anas[-1].size:
-                            anas = np.append(anas, sig['data'][None, :], axis=0)
+            elif self._format == 'openephys':
+                # Find continuous CH data
+                contFiles = [f for f in os.listdir(self._absolute_foldername) if 'continuous' in f and 'CH' in f]
+                contFiles = sorted(contFiles)
+                if len(contFiles) != 0:
+                    print('Reading all channels')
+                    anas = np.array([])
+                    for f in contFiles:
+                        fullpath = op.join(self._absolute_foldername, f)
+                        sig = read_analog_continuous_signal(fullpath)
+                        if anas.shape[0] < 1:
+                            anas = sig['data'][None, :]
                         else:
-                            raise Exception('Channels must have the same number of samples')
+                            if sig['data'].size == anas[-1].size:
+                                anas = np.append(anas, sig['data'][None, :], axis=0)
+                            else:
+                                raise Exception('Channels must have the same number of samples')
+                    anas = np.array(anas)
+                    assert anas.shape[0] == len(self._channel_info['channels'])
+                    nsamples = anas.shape[1]
+                    print('Done!')
+            # Keep only selected channels
+            if self._keep_channels is not None:
+                assert anas.shape[1] == nsamples, 'Assumed wrong shape'
+                anas_keep = anas[self._keep_channels, :]
+            else:
+                anas_keep = anas
+            self._analog_signals = [AnalogSignal(
+                channel_id=range(anas_keep.shape[0]),
+                signal=anas_keep,
+                sample_rate=self.sample_rate
+            )]
+        else:
+            self._analog_signals = [AnalogSignal(
+                channel_id=np.array([]),
+                signal=np.array([]),
+                sample_rate=self.sample_rate
+            )]
 
-                anas = np.array(anas)
-                print('Done!')
-
-        self._analog_signals = [AnalogSignal(
-            channel_id=range(anas_keep.shape[0]),
-            signal=anas_keep,
-            sample_rate=self.sample_rate
-        )]
         self._analog_signals_dirty = False
 
     def _read_digital_signals(self):
@@ -587,7 +573,7 @@ class File:
         if any('.events' in f and 'all_channels' in f for f in filenames):
             eventsfile = [f for f in filenames if '.events' in f and 'all_channels' in f][0]
             print('.events ', eventsfile)
-            with open(op.join(self._absolute_foldername, eventsfile), "r", encoding='utf-8', errors='ignore') as fh:
+            with open(op.join(self._absolute_foldername, eventsfile), "rb") as fh: #, encoding='utf-8', errors='ignore') as fh:
                 data = {}
 
                 print('loading events...')
@@ -598,73 +584,155 @@ class File:
 
                 data['header'] = header
 
-                index = -1
+                struct_fmt = '=qH4BH'  # int[5], float, byte[255]
+                struct_len = struct.calcsize(struct_fmt)
+                struct_unpack = struct.Struct(struct_fmt).unpack_from
 
-                channel = np.zeros(MAX_NUMBER_OF_EVENTS)
-                timestamps = np.zeros(MAX_NUMBER_OF_EVENTS)
-                sampleNum = np.zeros(MAX_NUMBER_OF_EVENTS)
-                nodeId = np.zeros(MAX_NUMBER_OF_EVENTS)
-                eventType = np.zeros(MAX_NUMBER_OF_EVENTS)
-                eventId = np.zeros(MAX_NUMBER_OF_EVENTS)
-                recordingNumber = np.zeros(MAX_NUMBER_OF_EVENTS)
+                nsamples = (os.fstat(fh.fileno()).st_size - fh.tell()) // struct_len
+                print('Estimated events samples: ', nsamples)
+                nread = 0
 
-                while fh.tell() < os.fstat(fh.fileno()).st_size:
+                read_data = []
+                while True:
+                    bytes = fh.read(struct_len)
+                    if not bytes:
+                        break
+                    s = struct_unpack(bytes)
+                    read_data.append(s)
+                    nread += 1
 
-                    index += 1
+                print('Read event samples: ', nread)
 
-                    timestamps[index] = np.fromfile(fh, np.dtype('<i8'), 1)
-                    sampleNum[index] = np.fromfile(fh, np.dtype('<i2'), 1)
-                    eventType[index] = np.fromfile(fh, np.dtype('<u1'), 1)
-                    nodeId[index] = np.fromfile(fh, np.dtype('<u1'), 1)
-                    eventId[index] = np.fromfile(fh, np.dtype('<u1'), 1)
-                    channel[index] = np.fromfile(fh, np.dtype('<u1'), 1)
-                    recordingNumber[index] = np.fromfile(fh, np.dtype('<u2'), 1)
+                timestamps, sampleNum, eventType, nodeId, eventId, channel, recordingNumber = zip(*read_data)
 
-                data['channel'] = channel[:index]
-                data['timestamps'] = timestamps[:index]
-                data['eventType'] = eventType[:index]
-                data['nodeId'] = nodeId[:index]
-                data['eventId'] = eventId[:index]
-                data['recordingNumber'] = recordingNumber[:index]
-                data['sampleNum'] = sampleNum[:index]
+                timestamps = np.array(timestamps)
+                sampleNum = np.array(sampleNum)
+                nodeId = np.array(nodeId)
+                eventType = np.array(eventType)
+                eventId = np.array(eventId)
+                channel = np.array(channel)
+                recordingNumber = np.array(recordingNumber)
+
+                # index = -1
+                #
+                # channel = np.zeros(MAX_NUMBER_OF_EVENTS)
+                # timestamps = np.zeros(MAX_NUMBER_OF_EVENTS)
+                # sampleNum = np.zeros(MAX_NUMBER_OF_EVENTS)
+                # nodeId = np.zeros(MAX_NUMBER_OF_EVENTS)
+                # eventType = np.zeros(MAX_NUMBER_OF_EVENTS)
+                # eventId = np.zeros(MAX_NUMBER_OF_EVENTS)
+                # recordingNumber = np.zeros(MAX_NUMBER_OF_EVENTS)
+                #
+                # while fh.tell() < os.fstat(fh.fileno()).st_size:
+                #
+                #     index += 1
+                #
+                #     timestamps[index] = np.fromfile(fh, np.dtype('<i8'), 1)
+                #     sampleNum[index] = np.fromfile(fh, np.dtype('<i2'), 1)
+                #     eventType[index] = np.fromfile(fh, np.dtype('<u1'), 1)
+                #     nodeId[index] = np.fromfile(fh, np.dtype('<u1'), 1)
+                #     eventId[index] = np.fromfile(fh, np.dtype('<u1'), 1)
+                #     channel[index] = np.fromfile(fh, np.dtype('<u1'), 1)
+                #     recordingNumber[index] = np.fromfile(fh, np.dtype('<u2'), 1)
+
+                data['channel'] = channel
+                data['timestamps'] = timestamps
+                data['eventType'] = eventType
+                data['nodeId'] = nodeId
+                data['eventId'] = eventId
+                data['recordingNumber'] = recordingNumber
+                data['sampleNum'] = sampleNum
 
                 # TODO: check if data is null (data['event...'] is null?
                 # Consider only TTL from FPGA (for now)
-                if len(data['timestamps']) != 0:
-                    idxttl_fpga = np.where((data['eventType'] == 3) & (data['nodeId'] == int(self.rhythmID)))
-                    digchan = []
-                    digs = []
-                    if len(idxttl_fpga[0]) != 0:
-                        print('TTLevents: ', len(idxttl_fpga[0]))
-                        digchan = np.unique(data['channel'][idxttl_fpga])
-                        if len(digchan) == 1:
-                            # Single digital input
-                            digs = data['timestamps'][idxttl_fpga]
-                            # Consider rising edge only
-                            digs = digs[::2]
-                            # remove start_time (offset) and transform in seconds
-                            digs -= data['timestamps'][0]
-                            digs /= self.sample_rate
-                        else:
-                            for chan in digchan:
-                                idx_chan = np.where(data['channel'] == chan)
-                                new_dig = data['timestamps'][idx_chan]
+                if self.rhythm:
+                    if len(data['timestamps']) != 0:
+                        idxttl_fpga = np.where((data['eventType'] == 3) & (data['nodeId'] == int(self.rhythmID)))
+                        digchan = []
+                        digs = []
+                        if len(idxttl_fpga[0]) != 0:
+                            print('TTLevents: ', len(idxttl_fpga[0]))
+                            digchan = np.unique(data['channel'][idxttl_fpga])
+                            if len(digchan) == 1:
+                                # Single digital input
+                                digs = data['timestamps'][idxttl_fpga]
                                 # Consider rising edge only
-                                new_dig = new_dig[::2]
-                                new_dig -= data['timestamps'][0]
-                                new_dig /= self.sample_rate
-                                digs.append(new_dig)
+                                digs = digs[::2]
+                                # remove start_time (offset) and transform in seconds
+                                digs -= data['timestamps'][0]
+                                digs = digs.astype(dtype='float')/self.sample_rate
+                            else:
+                                for chan in digchan:
+                                    idx_chan = np.where(data['channel'] == chan)
+                                    new_dig = data['timestamps'][idx_chan]
+                                    # Consider rising edge only
+                                    new_dig = new_dig[::2]
+                                    new_dig -= data['timestamps'][0]
+                                    new_dig = new_dig.astype(dtype='float')/self.sample_rate
+                                    digs.append(new_dig)
 
-                    self._digital_signals = [DigitalSignal(
-                        channel_id=digchan,
-                        times=digs,
-                        sample_rate=self.sample_rate
-                    )]
-                    self._digital_signals_dirty = False
-                    self._events_dirty = False
-                    self._events = data
+                        self._digital_signals = [DigitalSignal(
+                            channel_id=digchan,
+                            times=digs,
+                            sample_rate=self.sample_rate
+                        )]
+                    else:
+                        self._digital_signals = [DigitalSignal(
+                            channel_id=np.array([]),
+                            times=np.array([]),
+                            sample_rate=[]
+                        )]
                 else:
-                    self._digital_signals = []
+                    self._digital_signals = [DigitalSignal(
+                        channel_id=np.array([]),
+                        times=np.array([]),
+                        sample_rate=[]
+                    )]
+
+                if self.sync:
+                    if len(data['timestamps']) != 0:
+                        idxttl_sync = np.where((data['eventType'] == 3) & (data['nodeId'] == int(self.syncID)))
+                        syncchan = []
+                        syncs = []
+                        if len(idxttl_sync[0]) != 0:
+                            print('TTL Sync events: ', len(idxttl_sync[0]))
+                            syncchan = np.unique(data['channel'][idxttl_sync])
+                            if len(syncchan) == 1:
+                                # Single digital input
+                                syncs = data['timestamps'][idxttl_sync]
+                                # remove start_time (offset) and transform in seconds
+                                syncs -= data['timestamps'][0]
+                                syncs /= self.sample_rate
+                            else:
+                                for chan in syncchan:
+                                    idx_chan = np.where(data['channel'] == chan)
+                                    new_sync = data['timestamps'][idx_chan]
+
+                                    new_sync -= data['timestamps'][0]
+                                    new_sync /= self.sample_rate
+                                    syncs.append(new_sync)
+
+                        self._sync_signals = [Sync(
+                            channel_id=syncchan,
+                            times=syncs,
+                            sample_rate=self.sample_rate
+                        )]
+                    else:
+                        self._sync_signals = [DigitalSignal(
+                            channel_id=np.array([]),
+                            times=np.array([]),
+                            sample_rate=[]
+                        )]
+                else:
+                    self._sync_signals = [DigitalSignal(
+                        channel_id=np.array([]),
+                        times=np.array([]),
+                        sample_rate=[]
+                    )]
+
+                self._digital_signals_dirty = False
+                self._events_dirty = False
+                self._events = data
 
 
 def read_analog_binary_signals(filehandle, numchan):
@@ -853,7 +921,7 @@ def readHeader(fh):
     # Remove newlines and redundant "header." prefixes
     # The result should be a series of "key = value" strings, separated
     # by semicolons.
-    header_string = fh.read(1024).replace('\n','').replace('header.','')
+    header_string = fh.read(1024).decode('utf-8').replace('\n','').replace('header.','')
 
     # Parse each key = value string separately
     for pair in header_string.split(';'):
