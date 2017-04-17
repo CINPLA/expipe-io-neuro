@@ -1,4 +1,4 @@
-import pyopenephys
+from expipe_io_neuro import pyopenephys
 import exdir
 import shutil
 import glob
