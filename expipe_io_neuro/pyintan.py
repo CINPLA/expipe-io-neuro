@@ -82,8 +82,9 @@ class DigitalSignal:
         )
 
 class Stimulation:
-    def __init__(self, stim_data, amp_settle, charge_recovery, compliance_limit, stim_param):
-        self.stim_data = stim_data
+    def __init__(self, stim_channels, stim_signals, amp_settle, charge_recovery, compliance_limit, stim_param):
+        self.stim_channels = stim_channels
+        self.stim_signals = stim_signals
         self.amp_settle = amp_settle
         self.charge_recovery = charge_recovery
         self.compliance_limit = compliance_limit
@@ -143,7 +144,8 @@ class File:
         )]
 
         self._stimulation = [Stimulation(
-            stim_data=data['stim_data'],
+            stim_channels=data['stim_channels'],
+            stim_signals=data['stim_signals'],
             amp_settle=data['amp_settle_data'],
             charge_recovery=data['charge_recovery_data'],
             compliance_limit=data['compliance_limit_data'],
@@ -599,7 +601,7 @@ def loadRHS(filepath):
             dc_amplifier_data *= -0.01923  # units = volts
 
         if np.count_nonzero(stim_data) != 0:
-            # TODO only save stim channel and respective signal
+            # TODO only save stim channel and respective signals waveform
             stim_polarity = np.zeros((num_amplifier_channels, num_amplifier_samples))
 
             compliance_limit_data_idx = np.where(stim_data >= 2 ** 15)
@@ -616,8 +618,18 @@ def loadRHS(filepath):
             stim_data *= stim_polarity
             stim_data = stim_parameters['stim_step_size'] * stim_data / float(1e-6)  # units = microamps
 
+            stim_channels = []
+            stim_signals = []
+
+            for ch, stim in enumerate(stim_data):
+                if np.count_nonzero(stim) != 0:
+                    stim_channels.append(ch)
+                    stim_signals.append(stim)
+            stim_channels = np.array(stim_channels)
+            stim_signals = np.array(stim_signals)
+
             # Clear variables
-            del stim_polarity
+            del stim_polarity, stim_data
 
             amp_settle_data = []
             charge_recovery_data = []
@@ -644,7 +656,8 @@ def loadRHS(filepath):
             compliance_limit_data = np.array(compliance_limit_data)
         else:
             print('No stimulation data')
-            stim_data = np.array([])
+            stim_channels = np.array([])
+            stim_signals = np.array([])
             amp_settle_data = np.array([])
             charge_recovery_data = np.array([])
             compliance_limit_data = np.array([])
@@ -684,7 +697,8 @@ def loadRHS(filepath):
             if dc_amp_data_saved != 0:
                 data['dc_amplifier_data'] = dc_amplifier_data
 
-            data['stim_data'] = stim_data
+            data['stim_channels'] = stim_channels
+            data['stim_signals'] = stim_signals
             data['amp_settle_data'] = amp_settle_data
             data['charge_recovery_data'] = charge_recovery_data
             data['compliance_limit_data'] = compliance_limit_data

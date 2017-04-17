@@ -164,9 +164,10 @@ class File:
         rhythmRates = np.array([1., 1.25, 1.5, 2, 2.5, 3, 3.33, 4., 5., 6.25,
                                 8., 10., 12.5, 15., 20., 25., 30.])
         self.osc = False
-        self.oscID = []
-        self.oscPort = []
-        self.oscAddress = []
+        self.oscInfo = []
+        # self.oscID = []
+        # self.oscPort = []
+        # self.oscAddress = []
         self.tracking_timesamples_rate = 1000 * 1000. * pq.Hz
 
         self.sync = False
@@ -215,9 +216,11 @@ class File:
                         self._sample_rate = rhythmRates[sampleIdx] * 1000. * pq.Hz
                 if processor['name'] == 'Sources/OSC Port':
                     self.osc = True
-                    self.oscID.append(processor['NodeId'])
-                    self.oscPort.append(processor['EDITOR']['OSCNODE']['port'])
-                    self.oscAddress.append(processor['EDITOR']['OSCNODE']['address'])
+                    self.oscInfo.append({
+                        'oscID': processor['NodeId'],
+                        'oscPort': processor['EDITOR']['OSCNODE']['port'],
+                        'oscAddress': processor['EDITOR']['OSCNODE']['address'],
+                    })
                 if processor['name'] == 'Sources/Sync Port':
                     self.sync = True
                     self.syncID = processor['NodeId']
@@ -235,7 +238,7 @@ class File:
         if self.rhythm:
             print('RhythmFPGA with ', self.nchan, ' channels. NodeId: ', self.rhythmID)
         if self.osc:
-            print('OSC Port. NodeId: ', self.oscID)
+            print('OSC Port. NodeId: ', [osc['oscID'] for osc in self.oscInfo])
 
         if self.rhythm:
             recorded_channels = sorted([int(chan) for chan in
@@ -424,8 +427,7 @@ class File:
         if float(header['version']) < 0.4:
             raise Exception('Loader is only compatible with .events files with version 0.4 or higher')
 
-        # TODO consider reading the entire file and unpack it
-        struct_fmt = '=Bq4f'  # int[5], float, byte[255]
+        struct_fmt = '=Bq4f'  # uchar, int64, 4floats
         struct_len = struct.calcsize(struct_fmt)
         struct_unpack = struct.Struct(struct_fmt).unpack_from
 
@@ -473,6 +475,7 @@ class File:
             attrs = dict()
             attrs['sample_rate'] = sample_rate_s
             attrs['length_scale'] = np.array([width_s, height_s])
+            attrs['oscInfo'] = self.oscInfo.pop()
 
         else:
             print("Multiple tracking sources")
@@ -501,10 +504,8 @@ class File:
                 height_s.append(np.mean(h_))
             attrs = dict()
             attrs['sample_rate'] = np.array(sample_rate_s)
-            attrs['length_scale'] = np.array([width_s, height_s])
-            attrs['nodeId'] = self.oscID
-            attrs['port'] = self.oscPort
-            attrs['address'] = self.oscAddress
+            attrs['length_scale'] = np.transpose(np.array([width_s, height_s]))
+            attrs['oscInfo'] = self.oscInfo
 
         tracking_data = [TrackingData(
             times=ts_s,
@@ -544,7 +545,6 @@ class File:
                                 anas = np.append(anas, sig['data'][None, :], axis=0)
                             else:
                                 raise Exception('Channels must have the same number of samples')
-                    anas = np.array(anas)
                     assert anas.shape[0] == len(self._channel_info['channels'])
                     nsamples = anas.shape[1]
                     print('Done!')
@@ -612,28 +612,6 @@ class File:
                 eventId = np.array(eventId)
                 channel = np.array(channel)
                 recordingNumber = np.array(recordingNumber)
-
-                # index = -1
-                #
-                # channel = np.zeros(MAX_NUMBER_OF_EVENTS)
-                # timestamps = np.zeros(MAX_NUMBER_OF_EVENTS)
-                # sampleNum = np.zeros(MAX_NUMBER_OF_EVENTS)
-                # nodeId = np.zeros(MAX_NUMBER_OF_EVENTS)
-                # eventType = np.zeros(MAX_NUMBER_OF_EVENTS)
-                # eventId = np.zeros(MAX_NUMBER_OF_EVENTS)
-                # recordingNumber = np.zeros(MAX_NUMBER_OF_EVENTS)
-                #
-                # while fh.tell() < os.fstat(fh.fileno()).st_size:
-                #
-                #     index += 1
-                #
-                #     timestamps[index] = np.fromfile(fh, np.dtype('<i8'), 1)
-                #     sampleNum[index] = np.fromfile(fh, np.dtype('<i2'), 1)
-                #     eventType[index] = np.fromfile(fh, np.dtype('<u1'), 1)
-                #     nodeId[index] = np.fromfile(fh, np.dtype('<u1'), 1)
-                #     eventId[index] = np.fromfile(fh, np.dtype('<u1'), 1)
-                #     channel[index] = np.fromfile(fh, np.dtype('<u1'), 1)
-                #     recordingNumber[index] = np.fromfile(fh, np.dtype('<u2'), 1)
 
                 data['channel'] = channel
                 data['timestamps'] = timestamps
