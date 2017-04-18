@@ -279,7 +279,11 @@ class File:
 
     @property
     def session(self):
-        return op.split(self._absolute_foldername)[-1]
+        return os.path.split(self._absolute_foldername)[-1]
+
+    @property
+    def datetime(self):
+        return self._start_datetime
 
     @property
     def duration(self):
@@ -357,7 +361,7 @@ class File:
             stime = spl[-1]
             stime = stime.split('@')
             start = stime[0]
-            sample_rate = float(stime[-1][:-2]) * pq.Hz
+            sample_rate = float(stime[-1][:-3]) * pq.Hz
         else:
             start = sample_rate = []
 
