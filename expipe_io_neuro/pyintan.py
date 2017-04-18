@@ -282,8 +282,8 @@ def loadRHS(filepath):
     # Place frequency-related information in data structure.
     frequency_parameters = {
     'amplifier_sample_rate': sample_rate * pq.Hz,
-    'board_adc_sample_rate': sample_rate,
-    'board_dig_in_sample_rate': sample_rate,
+    'board_adc_sample_rate': sample_rate * pq.Hz,
+    'board_dig_in_sample_rate': sample_rate * pq.Hz,
     'desired_dsp_cutoff_frequency': desired_dsp_cutoff_frequency,
     'actual_dsp_cutoff_frequency': actual_dsp_cutoff_frequency,
     'dsp_enabled': dsp_enabled,
@@ -561,7 +561,7 @@ def loadRHS(filepath):
         else:
             print('Warning: ', num_gaps, ' gaps in timestamp data found.  Time scale will not be uniform!')
         # Scale time steps (units = seconds).
-        t /= float(sample_rate)
+        t /= sample_rate
 
         # # Extract digital input channels times separate variables.
         if np.count_nonzero(board_dig_in_raw) != 0:

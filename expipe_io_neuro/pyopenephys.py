@@ -454,7 +454,7 @@ class File:
         w = np.array(w)
         h = np.array(h)
 
-        ts = timestamps / 1000.
+        ts = timestamps / 1000. * pq.s
 
         # Sort out different Sources
         if len(np.unique(ids)) == 1:
@@ -680,14 +680,14 @@ class File:
                                 syncs = data['timestamps'][idxttl_sync]
                                 # remove start_time (offset) and transform in seconds
                                 syncs -= data['timestamps'][0]
-                                syncs /= self.sample_rate
+                                syncs = syncs.astype(dtype='float')/self.sample_rate
                             else:
                                 for chan in syncchan:
                                     idx_chan = np.where(data['channel'] == chan)
                                     new_sync = data['timestamps'][idx_chan]
 
                                     new_sync -= data['timestamps'][0]
-                                    new_sync /= self.sample_rate
+                                    new_sync = new_sync.astype(dtype='float')/self.sample_rate
                                     syncs.append(new_sync)
 
                         self._sync_signals = [Sync(
