@@ -19,17 +19,14 @@ from __future__ import division
 from __future__ import print_function
 from __future__ import with_statement
 
-import sys
 import quantities as pq
 import os
 import os.path as op
-import glob
 import numpy as np
 import xml.etree.ElementTree as ET
 from xmljson import yahoo as yh
 from datetime import datetime
 from six import exec_
-from copy import copy
 import locale
 import struct
 
@@ -42,7 +39,6 @@ import struct
 
 # TODO add SYNC and TRACKERSTIM metadata
 
-MAX_NUMBER_OF_EVENTS = int(1e6)
 
 
 def _read_python(path):
@@ -804,7 +800,7 @@ def read_analog_continuous_signal(filepath, dtype=float, verbose=False,
     records_read = 0
 
     # Open the file
-    with file(filepath, 'rb') as f:
+    with open(filepath, 'rb') as f:
         # Read header info, file length, and number of records
         header = readHeader(f)
         record_length_bytes = 2 * header['blockLength'] + 22
