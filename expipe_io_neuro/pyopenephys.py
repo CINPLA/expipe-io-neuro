@@ -44,6 +44,7 @@ import struct
 
 MAX_NUMBER_OF_EVENTS = int(1e6)
 
+
 def _read_python(path):
     path = op.realpath(op.expanduser(path))
     assert op.exists(path)
@@ -53,6 +54,17 @@ def _read_python(path):
     exec_(contents, {}, metadata)
     metadata = {k.lower(): v for (k, v) in metadata.items()}
     return metadata
+
+
+def _cut_to_same_len(*args):
+    out = []
+    lens = []
+    for arg in args:
+        lens.append(len(arg))
+    minlen = min(lens)
+    for arg in args:
+        out.append(arg[:minlen])
+    return tuple(out)
 
 
 class Channel:
@@ -204,14 +216,14 @@ class File:
                     self.rhythm = True
                     self.rhythmID = processor['NodeId']
                     # gain for all channels
-                    gain = {ch['number']: ch['gain']
+                    gain = {ch['number']: float(ch['gain']) * pq.uV  # TODO assert is uV
                             for chs in processor['CHANNEL_INFO'].values()
                             for ch in chs}
                     for chan in processor['CHANNEL']:
                         if chan['SELECTIONSTATE']['record'] == '1':
                             self.nchan += 1
                             chnum = chan['number']
-                            self._channel_info['gain'][chnum] = float(gain[chnum])
+                            self._channel_info['gain'][chnum] = gain[chnum]
                         sampleIdx = int(processor['EDITOR']['SampleRate'])-1
                         self._sample_rate = rhythmRates[sampleIdx] * 1000. * pq.Hz
                 if processor['name'] == 'Sources/OSC Port':
@@ -305,7 +317,6 @@ class File:
         else:
             return self._software_sample_rate
 
-
     def channel_group(self, channel_id):
         if self._channel_groups_dirty:
             self._read_channel_groups()
@@ -354,7 +365,6 @@ class File:
 
         return self._tracking
 
-
     def _read_software_rate(self, fh):
         spl = fh.readline().split()
         if any(['Software' in s for s in spl]):
@@ -366,7 +376,6 @@ class File:
             start = sample_rate = []
 
         return sample_rate, start
-
 
     def _read_channel_groups(self):
         self._channel_id_to_channel_group = {}
@@ -466,11 +475,9 @@ class File:
 
             difft = np.diff(ts)
             avg_period = np.mean(difft)
-            sample_rate_s = 1./float(avg_period) * pq.Hz
-
-            # Camera (0,0) is top left corner -> adjust y
-            # coord_s = np.array([x, 1-y])
-            coord_s = [np.array([x, y])]
+            sample_rate_s = 1. / float(avg_period) * pq.Hz
+            x, y, ts = _cut_to_same_len(x, y, ts)
+            coord_s = [np.array([x, y]).reshape((len(x), 2))]
             ts_s = [ts]
 
             width_s = np.mean(w)
@@ -492,14 +499,17 @@ class File:
                 w_ = np.squeeze(w[np.where(ids==ss)])
                 h_ = np.squeeze(h[np.where(ids==ss)])
                 ts_ = np.squeeze(ts[np.where(ids==ss)])
-
                 difft = np.diff(ts_)
                 avg_period = np.mean(difft)
-                sample_rate_ = 1./float(avg_period) * pq.Hz
+                sample_rate_ = 1. / float(avg_period) * pq.Hz
 
                 # Camera (0,0) is top left corner -> adjust y
                 # coord_ = np.array([x_, 1-y_])
-                coord_ = np.array([x_, y_])
+                xprev = x_
+                x_, y_, ts_ = _cut_to_same_len(x_, y_, ts_)
+                assert np.array_equal(xprev[:10], x_[:10])
+                assert not np.array_equal(xprev[:10], y_[:10])
+                coord_ = np.array([x_, y_]).reshape((len(x_), 2))
                 coord_s.append(coord_)
                 ts_s.append(ts_)
 
