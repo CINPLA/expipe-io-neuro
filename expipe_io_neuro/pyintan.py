@@ -219,7 +219,7 @@ class File:
 
     @property
     def session(self):
-        return self._absolute_foldername
+        return os.path.split(self._absolute_filename)[-1][:-4]
 
     @property
     def datetime(self):
