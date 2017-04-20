@@ -498,10 +498,10 @@ class File:
 
                 # Camera (0,0) is top left corner -> adjust y
                 # coord_ = np.array([x_, 1-y_])
-                xprev = x_
+                # xprev = x_
                 x_, y_, ts_ = _cut_to_same_len(x_, y_, ts_)
-                assert np.array_equal(xprev[:10], x_[:10])
-                assert not np.array_equal(xprev[:10], y_[:10])
+                # assert np.array_equal(xprev[:10], x_[:10]), '{}\n{}'.format(xprev[:10], x_[:10])
+                # assert not np.array_equal(xprev[:10], y_[:10])
                 coord_ = np.array([x_, y_]).reshape((len(x_), 2))
                 coord_s.append(coord_)
                 ts_s.append(ts_)
