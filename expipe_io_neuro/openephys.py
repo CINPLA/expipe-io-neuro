@@ -81,6 +81,8 @@ def generate_lfp(exdir_path, openephys_file):
     for channel_group, openephys_channel_group in zip(exdir_channel_groups,
                                                       openephys_file.channel_groups):
         lfp = channel_group.require_group("LFP")
+        group_id = openephys_channel_group.channel_group_id
+        print('Generating LFP, channel group ', group_id)
         for channel in openephys_channel_group.channels:
                 lfp_timeseries = lfp.require_group(
                     "LFP_timeseries_{}".format(channel.index)
@@ -89,7 +91,6 @@ def generate_lfp(exdir_path, openephys_file):
                 # decimate
                 target_rate = 1000 * pq.Hz
                 signal = np.array(analog_signal.signal, dtype=float)
-                signal *= channel.gain
                 sample_rate = copy.copy(analog_signal.sample_rate)
                 qs = [10, int((analog_signal.sample_rate / target_rate) / 10)]
                 for q in qs:
@@ -97,14 +98,14 @@ def generate_lfp(exdir_path, openephys_file):
                     sample_rate /= q
                 t_stop = len(signal) / sample_rate
                 assert round(t_stop, 2) == round(openephys_file.duration, 2), '{}, {}'.format(t_stop, openephys_file.duration)
-
+                signal = signal * channel.gain
                 lfp_timeseries.attrs["num_samples"] = len(signal)
                 lfp_timeseries.attrs["start_time"] = 0 * pq.s
                 lfp_timeseries.attrs["stop_time"] = t_stop
                 lfp_timeseries.attrs["sample_rate"] = sample_rate
                 lfp_timeseries.attrs["electrode_identity"] = analog_signal.channel_id
                 lfp_timeseries.attrs["electrode_idx"] = analog_signal.channel_id - openephys_channel_group.channel_group_id * 4
-                lfp_timeseries.attrs['electrode_group_id'] = openephys_channel_group.channel_group_id
+                lfp_timeseries.attrs['electrode_group_id'] = group_id
                 data = lfp_timeseries.require_dataset("data", data=signal)
                 data.attrs["num_samples"] = len(signal)
                 # NOTE: In exdirio (python-neo) sample rate is required on dset #TODO
@@ -112,6 +113,7 @@ def generate_lfp(exdir_path, openephys_file):
 
 
 def generate_spike_trains(exdir_path):
+    print('Generating spike trains from KWIK file')
     import neo
     exdir_file = exdir.File(exdir_path)
     acquisition = exdir_file["acquisition"]
@@ -142,7 +144,7 @@ def generate_tracking(exdir_path, openephys_file):
     for n, (times, coords) in enumerate(zip(tracking_data.times,
                                             tracking_data.positions)):
         led = position.require_group("led_" + str(n))
-        dset = led.require_dataset('data', coords)
+        dset = led.require_dataset('data', coords * pq.m) # TODO units??
         dset.attrs['num_samples'] = len(coords)
         dset = led.require_dataset("timestamps", times)
         dset.attrs['num_samples'] = len(times)
@@ -170,16 +172,17 @@ class OpenEphysFilerecord(Filerecord):
     def generate_inp(self):
         generate_inp(self.local_path)
 
+
 if __name__ == '__main__':
     openephys_directory = '/home/mikkel/Ephys/1703_2017-04-15_13-34-12'
-    exdir_path = '/home/mikkel/apps/expipe-project/openephystest.exdir'
-    probefile = '/home/mikkel/Ephys/tetrodes32ch-klusta.prb'
-    if op.exists(exdir_path):
-        shutil.rmtree(exdir_path)
-    convert(openephys_directory=openephys_directory,
-            exdir_path=exdir_path,
-            probefile=probefile)
+    exdir_path = '/tmp/1703-150417-01/main.exdir'
+    probefile = '/home/mikkel/.config/expipe/tetrodes32ch-klusta-oe.prb'
+    # if op.exists(exdir_path):
+    #     shutil.rmtree(exdir_path)
+    # convert(openephys_directory=openephys_directory,
+    #         exdir_path=exdir_path,
+    #         probefile=probefile)
     generate_tracking(exdir_path)
-    generate_lfp(exdir_path)
-    generate_spike_trains(exdir_path)
+    # generate_lfp(exdir_path)
+    # generate_spike_trains(exdir_path)
     # generate_inp(exdir_path)
