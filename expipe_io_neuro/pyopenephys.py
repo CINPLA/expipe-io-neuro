@@ -29,6 +29,7 @@ from datetime import datetime
 from six import exec_
 import locale
 import struct
+import platform
 
 
 # TODO related files
@@ -187,7 +188,10 @@ class File:
             xmldata = f.read()
             self.settings = yh.data(ET.fromstring(xmldata))['SETTINGS']
         # read date in US formate
-        locale.setlocale(locale.LC_ALL, 'en_US.UTF8')
+        if platform.system() == 'Windows':
+            locale.setlocale(locale.LC_ALL, 'english')
+        else:
+            locale.setlocale(locale.LC_ALL, 'en_US.UTF8')
         self._start_datetime = datetime.strptime(self.settings['INFO']['DATE'], '%d %b %Y %H:%M:%S')
         self._channel_info = {}
         self.nchan = 0
@@ -253,6 +257,7 @@ class File:
                                         self._channel_info['gain'].keys()])
             self._channel_info['channels'] = recorded_channels
             if probefile is not None:
+                self._keep_channels = []
                 self._probefile_ch_mapping = _read_python(probefile)['channel_groups']
                 for group_idx, group in self._probefile_ch_mapping.items():
                     group['gain'] = []
@@ -267,18 +272,10 @@ class File:
                                              ' is not marked as recorded ' +
                                              'in settings file' +
                                              self._set_fname)
-                        if recorded_channels.index(oe_chan) != chan:
-                            print(oe_chan)
-                            print(recorded_channels.index(oe_chan))
-                            print(chan)
-                            raise ValueError('Channel mapping does not match ' +
-                                             'sequence of recorded channels')
                         group['gain'].append(
                             self._channel_info['gain'][str(oe_chan)]
                         )
-                self._keep_channels = [chan for group in
-                                       self._probefile_ch_mapping.values()
-                                       for chan in group['channels']]
+                        self._keep_channels.append(recorded_channels.index(oe_chan))
                 print('Number of selected channels: ', len(self._keep_channels))
             else:
                 self._keep_channels = None # HACK
