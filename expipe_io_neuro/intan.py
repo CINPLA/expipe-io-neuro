@@ -24,9 +24,9 @@ def _prepare_exdir_file(exdir_file):
     return general, subject, processing, epochs
 
 
-def convert(intan_filepath, exdir_path, probefile):
+def convert(intan_file, exdir_path, probefile):
 
-    intan_file = pyintan.File(intan_filepath, probefile)
+    # intan_file = pyintan.File(intan_filepath, probefile)
     exdir_file = exdir.File(exdir_path)
     dtime = intan_file.datetime.strftime('%Y-%m-%dT%H:%M:%S')
     exdir_file.attrs['session_start_time'] = dtime
@@ -58,10 +58,10 @@ def load_intan_file(exdir_path):
     return pyintan.File(intan_fullpath, probefile)
 
 
-def _prepare_channel_groups(exdir_path):
+def _prepare_channel_groups(exdir_path, intan_file):
     exdir_file = exdir.File(exdir_path)
     general, subject, processing, epochs = _prepare_exdir_file(exdir_file)
-    intan_file = load_intan_file(exdir_path=exdir_file)
+    # intan_file = load_intan_file(exdir_path=exdir_file)
     exdir_channel_groups = []
     elphys = processing.require_group('electrophysiology')
     for intan_channel_group in intan_file.channel_groups:
@@ -75,13 +75,13 @@ def _prepare_channel_groups(exdir_path):
         exdir_channel_group.attrs["electrode_idx"] = channel_identities - channel_identities[0]
         exdir_channel_group.attrs['electrode_group_id'] = intan_channel_group.channel_group_id
         # TODO else: test if attrs are the same
-    return exdir_channel_groups, intan_file
+    return exdir_channel_groups
 
 
-def generate_lfp(exdir_path):
+def generate_lfp(exdir_path, intan_file):
     import scipy.signal as ss
     import copy
-    exdir_channel_groups, intan_file = _prepare_channel_groups(exdir_path)
+    exdir_channel_groups = _prepare_channel_groups(exdir_path, intan_file)
     for channel_group, intan_channel_group in zip(exdir_channel_groups,
                                                       intan_file.channel_groups):
         lfp = channel_group.require_group("LFP")
