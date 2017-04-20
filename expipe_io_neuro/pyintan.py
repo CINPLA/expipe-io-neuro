@@ -96,9 +96,9 @@ class DigitalSignal:
         )
 
 class Stimulation:
-    def __init__(self, stim_channels, stim_signals, amp_settle, charge_recovery, compliance_limit, stim_param):
+    def __init__(self, stim_channels, stim_signal, amp_settle, charge_recovery, compliance_limit, stim_param):
         self.stim_channels = stim_channels
-        self.stim_signals = stim_signals
+        self.stim_signal = stim_signal
         self.amp_settle = amp_settle
         self.charge_recovery = charge_recovery
         self.compliance_limit = compliance_limit
@@ -129,7 +129,7 @@ class File:
         self._start_datetime = datetime.strptime(under_date[0]+under_date[1], '%y%m%d%H%M%S')
         self._times = data['t']
         self._duration = self._times[-1] - self._times[0]
-        self._sample_rate = data['frequency_parameters']['amplifier_sample_rate'] * pq.Hz
+        self._sample_rate = data['frequency_parameters']['amplifier_sample_rate']
 
         # apply probe channel mapping
         recorded_channels = sorted([data['amplifier_channels'][ch]['chip_channel']
@@ -206,7 +206,7 @@ class File:
 
         self._stimulation = [Stimulation(
             stim_channels=data['stim_channels'],
-            stim_signals=data['stim_signals'],
+            stim_signal=data['stim_signal'],
             amp_settle=data['amp_settle_data'],
             charge_recovery=data['charge_recovery_data'],
             compliance_limit=data['compliance_limit_data'],
@@ -318,6 +318,39 @@ class File:
         # TODO channel mapping to file
         self._channel_ids = np.arange(self._channel_count)
         self._channel_groups_dirty = False
+
+
+    def clip_recording(self, clipping_times):
+
+        if clipping_times is not None:
+            if clipping_times is not list:
+                if type(clipping_times[0]) is not pq.quantity.Quantity:
+                    raise AttributeError('clipping_times must be a quantity list of length 1 or 2')
+
+            clipping_times = [t.rescale(pq.s) for t in clipping_times]
+
+            for anas in self.analog_signals:
+                anas.signal = clip_anas(anas, self.times, clipping_times)
+            for anas in self.adc_signals:
+                anas.signal = clip_anas(anas, self.times, clipping_times)
+            for anas in self.dac_signals:
+                anas.signal = clip_anas(anas, self.times, clipping_times)
+            for digs in self.digital_in_signals:
+                digs.times = clip_digs(digs, clipping_times)
+                digs.times = [times - clipping_times[0]
+                              for times in digs.times if len(digs.times) > 0]
+            for digs in self.digital_out_signals:
+                digs.times = clip_digs(digs, clipping_times)
+                digs.times = [times - clipping_times[0]
+                              for times in digs.times if len(digs.times) > 0]
+            for stim in self.stimulation:
+                stim.stim_signal = clip_stimulation(stim, self.times, clipping_times)
+
+            self._times = clip_times(self._times, clipping_times)
+            self._times -= self._times[0]
+            self._duration = self._times[-1] - self._times[0]
+        else:
+            print('Empty clipping times list.')
 
 
     def load(self, filepath):
@@ -684,7 +717,7 @@ class File:
             else:
                 print('Warning: ', num_gaps, ' gaps in timestamp data found.  Time scale will not be uniform!')
             # Scale time steps (units = seconds).
-            t /= sample_rate
+            t = t / frequency_parameters['amplifier_sample_rate']
 
             # # Extract digital input channels times separate variables.
             if np.count_nonzero(board_dig_in_raw) != 0:
@@ -694,7 +727,7 @@ class File:
                     idx_high = np.where(board_dig_in_raw == board_dig_in_channels[i]['native_order'])
                     rising, falling = get_rising_falling_edges(idx_high)
                     board_dig_in_data.append(t[rising])
-                board_dig_in_data = np.array(board_dig_in_data)
+                board_dig_in_data = np.array(board_dig_in_data) * pq.s
             else:
                 print('No digital input data')
                 board_dig_in_data = np.array([])
@@ -706,7 +739,7 @@ class File:
                     idx_high = np.where(board_dig_out_raw == board_dig_in_channels[i]['native_order'])
                     rising, falling = get_rising_falling_edges(idx_high)
                     board_dig_out_data.append(t[rising])
-                board_dig_out_data = np.array(board_dig_out_data)
+                board_dig_out_data = np.array(board_dig_out_data) * pq.s
             else:
                 print('No digital output data')
                 board_dig_out_data = np.array([])
@@ -751,14 +784,14 @@ class File:
                 stim_data = stim_parameters['stim_step_size'] * stim_data / float(1e-6)  # units = microamps
 
                 stim_channels = []
-                stim_signals = []
+                stim_signal = []
 
                 for ch, stim in enumerate(stim_data):
                     if np.count_nonzero(stim) != 0:
                         stim_channels.append(ch)
-                        stim_signals.append(stim)
+                        stim_signal.append(stim)
                 stim_channels = np.array(stim_channels)
-                stim_signals = np.array(stim_signals)
+                stim_signal = np.array(stim_signal)
 
                 # Clear variables
                 del stim_polarity, stim_data
@@ -789,7 +822,7 @@ class File:
             else:
                 print('No stimulation data')
                 stim_channels = np.array([])
-                stim_signals = np.array([])
+                stim_signal = np.array([])
                 amp_settle_data = np.array([])
                 charge_recovery_data = np.array([])
                 compliance_limit_data = np.array([])
@@ -830,7 +863,7 @@ class File:
                     data['dc_amplifier_data'] = dc_amplifier_data
 
                 data['stim_channels'] = stim_channels
-                data['stim_signals'] = stim_signals
+                data['stim_signal'] = stim_signal
                 data['amp_settle_data'] = amp_settle_data
                 data['charge_recovery_data'] = charge_recovery_data
                 data['compliance_limit_data'] = compliance_limit_data
@@ -935,3 +968,121 @@ def get_rising_falling_edges(idx_high):
                     rising.append(idx)
 
     return rising, falling
+
+# clipping functions
+def extract_sync_times(adc_signal, times):
+    '''
+
+    :param adc_signal: analog_signal with sync event ('1' is > 1.65V)
+    :param times: array of timestamps of analog signal
+    :return: array with rising times
+    '''
+    idx_high = np.where(adc_signal>1.65)[0]
+
+    rising = []
+
+    if len(idx_high) != 0:
+        for i, idx in enumerate(idx_high[:-1]):
+            if i==0:
+                # first idx is rising
+                rising.append(idx)
+            elif idx - 1 != idx_high[i-1]:
+                rising.append(idx)
+
+    return np.array(times[rising]) * pq.s
+
+
+def clip_anas(analog_signals, times, clipping_times):
+    '''
+
+    :param analog_signals:
+    :param times:
+    :param clipping_times:
+    :return:
+    '''
+
+    if len(analog_signals.signal) != 0:
+        times.rescale(pq.s)
+        if len(clipping_times) == 2:
+            idx = np.where((times > clipping_times[0]) & (times < clipping_times[1]))
+        elif len(clipping_times) ==  1:
+            idx = np.where(times > clipping_times[0])
+        else:
+            raise AttributeError('clipping_times must be of length 1 or 2')
+
+        if len(analog_signals.signal.shape) == 2:
+            anas_clip = analog_signals.signal[:, idx[0]]
+        else:
+            anas_clip = analog_signals.signal[idx[0]]
+
+        return anas_clip
+    else:
+        return []
+
+
+def clip_digs(digital_signals, clipping_times):
+    '''
+
+    :param digital_signals:
+    :param clipping_times:
+    :return:
+    '''
+
+    digs_clip = []
+    for i, dig in enumerate(digital_signals.times):
+        dig.rescale(pq.s)
+        if len(clipping_times) == 2:
+            idx = np.where((dig > clipping_times[0]) & (dig < clipping_times[1]))
+        elif len(clipping_times) == 1:
+            idx = np.where(dig > clipping_times[0])
+        else:
+            raise AttributeError('clipping_times must be of length 1 or 2')
+        digs_clip.append(dig[idx])
+
+    return np.array(digs_clip)
+
+
+def clip_times(times, clipping_times):
+    '''
+
+    :param times:
+    :param clipping_times:
+    :return:
+    '''
+    times.rescale(pq.s)
+
+    if len(clipping_times) == 2:
+        idx = np.where((times > clipping_times[0]) & (times < clipping_times[1]))
+    elif len(clipping_times) ==  1:
+        idx = np.where(times > clipping_times[0])
+    else:
+        raise AttributeError('clipping_times must be of length 1 or 2')
+    times_clip = times[idx]
+
+    return times_clip
+
+
+def clip_stimulation(stimulation, times, clipping_times):
+    '''
+
+    :param stimulation:
+    :param times:
+    :param clipping_times:
+    :return:
+    '''
+    if len(stimulation.stim_signal) != 0:
+        if len(clipping_times) == 2:
+            idx = np.where((times > clipping_times[0]) & (times < clipping_times[1]))
+        elif len(clipping_times) ==  1:
+            idx = np.where(times > clipping_times[0])
+        else:
+            raise AttributeError('clipping_times must be of length 1 or 2')
+
+        if len(stimulation.stim_signal.shape) == 2:
+            stim_clip = stimulation.stim_signal[:, idx[0]]
+        else:
+            stim_clip = stimulation.stim_signal[idx[0]]
+
+        return stim_clip
+    else:
+        return []

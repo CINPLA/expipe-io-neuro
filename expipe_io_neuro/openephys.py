@@ -24,7 +24,7 @@ def _prepare_exdir_file(exdir_file):
     return general, subject, processing, epochs
 
 
-def convert(openephys_file, exdir_path, probefile):
+def convert(openephys_file, exdir_path, probefile, probefilename='openephys_channelmap.prb', copyfiles=True):
     # openephys_file = pyopenephys.File(openephys_directory, probefile)
     exdir_file = exdir.File(exdir_path)
     dtime = openephys_file._start_datetime.strftime('%Y-%m-%dT%H:%M:%S')
@@ -39,10 +39,11 @@ def convert(openephys_file, exdir_path, probefile):
     acquisition.attrs["openephys_session"] = openephys_file.session
     acquisition.attrs["acquisition_system"] = 'OpenEphys'
 
-    shutil.copytree(openephys_file._absolute_foldername, target_folder)
-    shutil.copy(probefile, op.join(target_folder, 'openephys_channelmap.prb'))
+    if copyfiles:
+        shutil.copytree(openephys_file._absolute_foldername, target_folder)
+        shutil.copy(probefile, op.join(target_folder, probefilename))
 
-    print("Copied", openephys_file.session, "to", target_folder)
+        print("Copied", openephys_file.session, "to", target_folder)
 
 
 def load_openephys_file(exdir_file):
@@ -116,11 +117,15 @@ def generate_spike_trains(exdir_path):
     acquisition = exdir_file["acquisition"]
     openephys_session = acquisition.attrs["openephys_session"]
     openephys_directory = op.join(acquisition.directory, openephys_session)
-    kwikfile = op.join(openephys_directory, openephys_session + '_klusta.kwik')
-    kwikio = neo.io.KwikIO(filename=kwikfile)
-    blk = kwikio.read_block()
-    exdirio = neo.io.ExdirIO(exdir_path)
-    exdirio.write_block(blk)
+    kwikfile = [f for f in os.listdir(openephys_directory) if f.endswith('_klusta.kwik')][0]
+    kwikfile = op.join(openephys_directory, kwikfile)
+    if op.exists(kwikfile):
+        kwikio = neo.io.KwikIO(filename=kwikfile)
+        blk = kwikio.read_block()
+        exdirio = neo.io.ExdirIO(exdir_path)
+        exdirio.write_block(blk)
+    else:
+        print('.kwik file is not in exdir folder')
 
 
 def generate_tracking(exdir_path, openephys_file):
