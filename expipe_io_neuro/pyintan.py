@@ -320,7 +320,7 @@ class File:
         self._channel_groups_dirty = False
 
 
-    def clip_recording(self, clipping_times):
+    def clip_recording(self, clipping_times, start_end='start'):
 
         if clipping_times is not None:
             if clipping_times is not list:
@@ -330,23 +330,23 @@ class File:
             clipping_times = [t.rescale(pq.s) for t in clipping_times]
 
             for anas in self.analog_signals:
-                anas.signal = clip_anas(anas, self.times, clipping_times)
+                anas.signal = clip_anas(anas, self.times, clipping_times, start_end)
             for anas in self.adc_signals:
-                anas.signal = clip_anas(anas, self.times, clipping_times)
+                anas.signal = clip_anas(anas, self.times, clipping_times, start_end)
             for anas in self.dac_signals:
-                anas.signal = clip_anas(anas, self.times, clipping_times)
+                anas.signal = clip_anas(anas, self.times, clipping_times, start_end)
             for digs in self.digital_in_signals:
-                digs.times = clip_digs(digs, clipping_times)
+                digs.times = clip_digs(digs, clipping_times, start_end)
                 digs.times = [times - clipping_times[0]
                               for times in digs.times if len(digs.times) > 0]
             for digs in self.digital_out_signals:
-                digs.times = clip_digs(digs, clipping_times)
+                digs.times = clip_digs(digs, clipping_times, start_end)
                 digs.times = [times - clipping_times[0]
                               for times in digs.times if len(digs.times) > 0]
             for stim in self.stimulation:
-                stim.stim_signal = clip_stimulation(stim, self.times, clipping_times)
+                stim.stim_signal = clip_stimulation(stim, self.times, clipping_times, start_end)
 
-            self._times = clip_times(self._times, clipping_times)
+            self._times = clip_times(self._times, clipping_times, start_end)
             self._times -= self._times[0]
             self._duration = self._times[-1] - self._times[0]
         else:
@@ -992,12 +992,13 @@ def extract_sync_times(adc_signal, times):
     return np.array(times[rising]) * pq.s
 
 
-def clip_anas(analog_signals, times, clipping_times):
+def clip_anas(analog_signals, times, clipping_times, start_end):
     '''
 
     :param analog_signals:
     :param times:
     :param clipping_times:
+    :param start_end:
     :return:
     '''
 
@@ -1006,7 +1007,10 @@ def clip_anas(analog_signals, times, clipping_times):
         if len(clipping_times) == 2:
             idx = np.where((times > clipping_times[0]) & (times < clipping_times[1]))
         elif len(clipping_times) ==  1:
-            idx = np.where(times > clipping_times[0])
+            if start_end == 'start':
+                idx = np.where(times > clipping_times[0])
+            elif start_end == 'end':
+                idx = np.where(times < clipping_times[0])
         else:
             raise AttributeError('clipping_times must be of length 1 or 2')
 
@@ -1020,11 +1024,12 @@ def clip_anas(analog_signals, times, clipping_times):
         return []
 
 
-def clip_digs(digital_signals, clipping_times):
+def clip_digs(digital_signals, clipping_times, start_end):
     '''
 
     :param digital_signals:
     :param clipping_times:
+    :param start_end:
     :return:
     '''
 
@@ -1034,19 +1039,23 @@ def clip_digs(digital_signals, clipping_times):
         if len(clipping_times) == 2:
             idx = np.where((dig > clipping_times[0]) & (dig < clipping_times[1]))
         elif len(clipping_times) == 1:
-            idx = np.where(dig > clipping_times[0])
+            if start_end == 'start':
+                idx = np.where(dig > clipping_times[0])
+            elif start_end == 'end':
+                idx = np.where(dig < clipping_times[0])
         else:
             raise AttributeError('clipping_times must be of length 1 or 2')
         digs_clip.append(dig[idx])
 
-    return np.array(digs_clip)
+    return np.array(digs_clip) * pq.s
 
 
-def clip_times(times, clipping_times):
+def clip_times(times, clipping_times, start_end):
     '''
 
     :param times:
     :param clipping_times:
+    :param start_end:
     :return:
     '''
     times.rescale(pq.s)
@@ -1054,27 +1063,33 @@ def clip_times(times, clipping_times):
     if len(clipping_times) == 2:
         idx = np.where((times > clipping_times[0]) & (times < clipping_times[1]))
     elif len(clipping_times) ==  1:
-        idx = np.where(times > clipping_times[0])
+        if start_end == 'start':
+            idx = np.where(times > clipping_times[0])
+        elif start_end == 'end':
+            idx = np.where(times < clipping_times[0])
     else:
         raise AttributeError('clipping_times must be of length 1 or 2')
     times_clip = times[idx]
 
     return times_clip
 
-
-def clip_stimulation(stimulation, times, clipping_times):
+def clip_stimulation(stimulation, times, clipping_times, start_end):
     '''
 
     :param stimulation:
     :param times:
     :param clipping_times:
+    :param start_end:
     :return:
     '''
     if len(stimulation.stim_signal) != 0:
         if len(clipping_times) == 2:
             idx = np.where((times > clipping_times[0]) & (times < clipping_times[1]))
         elif len(clipping_times) ==  1:
-            idx = np.where(times > clipping_times[0])
+            if start_end == 'start':
+                idx = np.where(times > clipping_times[0])
+            elif start_end == 'end':
+                idx = np.where(times < clipping_times[0])
         else:
             raise AttributeError('clipping_times must be of length 1 or 2')
 

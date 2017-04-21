@@ -483,6 +483,11 @@ class File:
             avg_period = np.mean(difft)
             sample_rate_s = 1. / float(avg_period) * pq.Hz
             x, y, ts = _cut_to_same_len(x, y, ts)
+            for i, (xx, yy) in enumerate(zip(x, y)):
+                if xx == yy and xx == 0:
+                    x[i] = np.nan
+                    y[i] = np.nan
+
             coord_s = [np.array([x, y])]
             ts_s = [ts]
 
@@ -512,6 +517,11 @@ class File:
                 # Camera (0,0) is top left corner -> adjust y
                 # coord_ = np.array([x_, 1-y_])
                 x_, y_, ts_ = _cut_to_same_len(x_, y_, ts_)
+                for i, (xx, yy) in enumerate(zip(x_, y_)):
+                    if xx == yy and xx == 0:
+                        x_[i] = np.nan
+                        y_[i] = np.nan
+
                 coord_ = np.array([x_, y_])
                 coord_s.append(coord_)
                 ts_s.append(ts_)
@@ -734,7 +744,7 @@ class File:
                 # self._events = data
 
 
-    def clip_recording(self, clipping_times):
+    def clip_recording(self, clipping_times, start_end='start'):
 
         if clipping_times is not None:
             if clipping_times is not list:
@@ -744,14 +754,14 @@ class File:
             clipping_times = [t.rescale(pq.s) for t in clipping_times]
 
             for anas in self.analog_signals:
-                anas.signal = clip_anas(anas, self.times, clipping_times)
+                anas.signal = clip_anas(anas, self.times, clipping_times, start_end)
             for digs in self.digital_in_signals:
-                digs.times = clip_digs(digs, clipping_times)
+                digs.times = clip_digs(digs, clipping_times, start_end)
                 digs.times = digs.times - clipping_times[0]
             for track in self.tracking:
-                track.positions, track.times = clip_tracking(track, clipping_times)
+                track.positions, track.times = clip_tracking(track, clipping_times,start_end)
 
-            self._times = clip_times(self._times, clipping_times)
+            self._times = clip_times(self._times, clipping_times, start_end)
             self._times -= self._times[0]
             self._duration = self._times[-1] - self._times[0]
         else:
@@ -1029,12 +1039,13 @@ def get_number_of_records(filepath):
     return n_records
 
 # TODO require quantities and deal with it
-def clip_anas(analog_signals, times, clipping_times):
+def clip_anas(analog_signals, times, clipping_times, start_end):
     '''
 
     :param analog_signals:
     :param times:
     :param clipping_times:
+    :param start_end:
     :return:
     '''
 
@@ -1043,7 +1054,10 @@ def clip_anas(analog_signals, times, clipping_times):
         if len(clipping_times) == 2:
             idx = np.where((times > clipping_times[0]) & (times < clipping_times[1]))
         elif len(clipping_times) ==  1:
-            idx = np.where(times > clipping_times[0])
+            if start_end == 'start':
+                idx = np.where(times > clipping_times[0])
+            elif start_end == 'end':
+                idx = np.where(times < clipping_times[0])
         else:
             raise AttributeError('clipping_times must be of length 1 or 2')
 
@@ -1057,11 +1071,12 @@ def clip_anas(analog_signals, times, clipping_times):
         return []
 
 
-def clip_digs(digital_signals, clipping_times):
+def clip_digs(digital_signals, clipping_times, start_end):
     '''
 
     :param digital_signals:
     :param clipping_times:
+    :param start_end:
     :return:
     '''
 
@@ -1071,7 +1086,10 @@ def clip_digs(digital_signals, clipping_times):
         if len(clipping_times) == 2:
             idx = np.where((dig > clipping_times[0]) & (dig < clipping_times[1]))
         elif len(clipping_times) == 1:
-            idx = np.where(dig > clipping_times[0])
+            if start_end == 'start':
+                idx = np.where(dig > clipping_times[0])
+            elif start_end == 'end':
+                idx = np.where(dig < clipping_times[0])
         else:
             raise AttributeError('clipping_times must be of length 1 or 2')
         digs_clip.append(dig[idx])
@@ -1079,12 +1097,12 @@ def clip_digs(digital_signals, clipping_times):
     return np.array(digs_clip) * pq.s
 
 
-def clip_tracking(tracking, clipping_times):
+def clip_tracking(tracking, clipping_times, start_end):
     '''
 
     :param tracking:
-    :param times:
     :param clipping_times:
+    :param start_end:
     :return:
     '''
     assert len(tracking.positions) == len(tracking.times)
@@ -1097,21 +1115,26 @@ def clip_tracking(tracking, clipping_times):
         if len(clipping_times) == 2:
             idx = np.where((tracking.times[i] > clipping_times[0]) & (tracking.times[i] < clipping_times[1]))
         elif len(clipping_times) ==  1:
-            idx = np.where(tracking.times[i] > clipping_times[0])
+            if start_end == 'start':
+                idx = np.where(tracking.times[i] > clipping_times[0])
+            elif start_end == 'end':
+                idx = np.where(tracking.times[i] < clipping_times[0])
         else:
             raise AttributeError('clipping_times must be of length 1 or 2')
 
         track_clip.append(np.array([led[idx[0]] for led in tr]))
-        t_clip.append(tracking.times[i][idx[0]])
+        times = tracking.times[i][idx[0]] - clipping_times[0]
+        t_clip.append(times)
 
     return track_clip, t_clip
 
 
-def clip_times(times, clipping_times):
+def clip_times(times, clipping_times, start_end):
     '''
 
     :param times:
     :param clipping_times:
+    :param start_end:
     :return:
     '''
     times.rescale(pq.s)
@@ -1119,7 +1142,10 @@ def clip_times(times, clipping_times):
     if len(clipping_times) == 2:
         idx = np.where((times > clipping_times[0]) & (times < clipping_times[1]))
     elif len(clipping_times) ==  1:
-        idx = np.where(times > clipping_times[0])
+        if start_end == 'start':
+            idx = np.where(times > clipping_times[0])
+        elif start_end == 'end':
+            idx = np.where(times < clipping_times[0])
     else:
         raise AttributeError('clipping_times must be of length 1 or 2')
     times_clip = times[idx]
