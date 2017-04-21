@@ -92,7 +92,7 @@ def generate_lfp(exdir_path, intan_file):
                 # decimate
                 target_rate = 1000 * pq.Hz
                 signal = np.array(analog_signal.signal, dtype=float)
-                # signal *= channel.gain
+
                 sample_rate = copy.copy(analog_signal.sample_rate)
                 qs = [10, int((analog_signal.sample_rate / target_rate) / 10)]
                 for q in qs:
@@ -100,6 +100,8 @@ def generate_lfp(exdir_path, intan_file):
                     sample_rate /= q
                 t_stop = len(signal) / sample_rate
                 assert round(t_stop, 2) == round(intan_file.duration, 2), '{}, {}'.format(t_stop, intan_file.duration)
+
+                signal = signal * pq.uV
 
                 lfp_timeseries.attrs["num_samples"] = len(signal)
                 lfp_timeseries.attrs["start_time"] = 0 * pq.s

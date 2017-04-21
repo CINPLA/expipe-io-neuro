@@ -483,7 +483,7 @@ class File:
             avg_period = np.mean(difft)
             sample_rate_s = 1. / float(avg_period) * pq.Hz
             x, y, ts = _cut_to_same_len(x, y, ts)
-            coord_s = [np.array([x, y]).reshape((len(x), 2))]
+            coord_s = [np.array([x, y])]
             ts_s = [ts]
 
             width_s = np.mean(w)
@@ -511,11 +511,8 @@ class File:
 
                 # Camera (0,0) is top left corner -> adjust y
                 # coord_ = np.array([x_, 1-y_])
-                xprev = x_
                 x_, y_, ts_ = _cut_to_same_len(x_, y_, ts_)
-                assert np.array_equal(xprev[:10], x_[:10])
-                assert not np.array_equal(xprev[:10], y_[:10])
-                coord_ = np.array([x_, y_]).reshape((len(x_), 2))
+                coord_ = np.array([x_, y_])
                 coord_s.append(coord_)
                 ts_s.append(ts_)
 
