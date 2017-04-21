@@ -147,7 +147,7 @@ def generate_tracking(exdir_path, openephys_file):
     for n, (times, coords) in enumerate(zip(tracking_data.times,
                                             tracking_data.positions)):
         led = position.require_group("led_" + str(n))
-        dset = led.require_dataset('data', coords.reshape(coords.shape[1], 2) * pq.m) # TODO units??
+        dset = led.require_dataset('data', coords.transpose() * pq.m) # TODO units??
         dset.attrs['num_samples'] = coords.shape[1]
         dset = led.require_dataset("timestamps", times)
         dset.attrs['num_samples'] = len(times)
@@ -177,14 +177,15 @@ class OpenEphysFilerecord(Filerecord):
 
 
 if __name__ == '__main__':
-    openephys_directory = '/home/alessiob/Documents/Data/1761/1761_2017-04-19_18-31-55'
+    openephys_directory = '/home/mikkel/Ephys/1704_2017-04-19_19-05-04_01'
     openephys_file = pyopenephys.File(openephys_directory)
-    exdir_path = '/tmp/1761-190417-01/main.exdir'
-    # if op.exists(exdir_path):
-    #     shutil.rmtree(exdir_path)
-    # convert(openephys_directory=openephys_directory,
-    #         exdir_path=exdir_path,
-    #         probefile=probefile)
+    probefile = '/home/mikkel/.config/expipe/tetrodes32ch-klusta-oe.prb'
+    exdir_path = '/tmp/test_1704/main.exdir'
+    if op.exists(exdir_path):
+        shutil.rmtree(exdir_path)
+    convert(openephys_file=openephys_file,
+            exdir_path=exdir_path,
+            probefile=probefile)
     generate_tracking(exdir_path, openephys_file)
     # generate_lfp(exdir_path)
     # generate_spike_trains(exdir_path)
