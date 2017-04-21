@@ -160,6 +160,8 @@ class File:
         self._channel_groups_dirty = True
         self._tracking_dirty = True
         self._events_dirty = True
+        self._times = []
+        self._duration = []
 
         # TODO: support for multiple exp in same folder
         filenames = [f for f in os.listdir(self._absolute_foldername)]
@@ -301,8 +303,7 @@ class File:
             self._duration = (self.analog_signals[0].signal.shape[1] /
                               self.analog_signals[0].sample_rate)
         elif self.osc:
-            self._duration = (len(self.tracking[0].positions[0]) /
-                              self.tracking[0].attrs['sample_rate'])
+            self._duration = self.tracking[0].times[0][-1] - self.tracking[0].times[0][0]
         else:
             self._duration = []
 
@@ -336,7 +337,7 @@ class File:
         return self._analog_signals
 
     @property
-    def digital_signals(self):
+    def digital_in_signals(self):
         if self._digital_signals_dirty:
             self._read_digital_signals()
 
@@ -363,13 +364,25 @@ class File:
 
         return self._tracking
 
+    @property
+    def times(self):
+        if self.rhythmID:
+            self._times = self.analog_signals[0].times
+        elif self.osc:
+            self._times = self.tracking[0].times[0]
+        else:
+            self._times = []
+
+        return self._times
+
     def _read_software_rate(self, fh):
         spl = fh.readline().split()
         if any(['Software' in s for s in spl]):
             stime = spl[-1]
             stime = stime.split('@')
             start = stime[0]
-            sample_rate = float(stime[-1][:-3]) * pq.Hz
+            hz_start = stime[-1].find('Hz')
+            sample_rate = float(stime[-1][:hz_start]) * pq.Hz
         else:
             start = sample_rate = []
 
@@ -475,8 +488,12 @@ class File:
             avg_period = np.mean(difft)
             sample_rate_s = 1. / float(avg_period) * pq.Hz
             x, y, ts = _cut_to_same_len(x, y, ts)
-            _zeros_to_nan(x, y)
-            coord_s = [np.array([x, y]).reshape((len(x), 2))]
+            for i, (xx, yy) in enumerate(zip(x, y)):
+                if xx == yy and xx == 0:
+                    x[i] = np.nan
+                    y[i] = np.nan
+
+            coord_s = [np.array([x, y])]
             ts_s = [ts]
 
             width_s = np.mean(w)
@@ -502,9 +519,15 @@ class File:
                 avg_period = np.mean(difft)
                 sample_rate_ = 1. / float(avg_period) * pq.Hz
 
+                # Camera (0,0) is top left corner -> adjust y
+                # coord_ = np.array([x_, 1-y_])
                 x_, y_, ts_ = _cut_to_same_len(x_, y_, ts_)
-                _zeros_to_nan(x_, y_)
-                coord_ = np.array([x_, y_]).reshape((len(x_), 2))
+                for i, (xx, yy) in enumerate(zip(x_, y_)):
+                    if xx == yy and xx == 0:
+                        x_[i] = np.nan
+                        y_[i] = np.nan
+
+                coord_ = np.array([x_, y_])
                 coord_s.append(coord_)
                 ts_s.append(ts_)
 
@@ -648,6 +671,7 @@ class File:
                                 # remove start_time (offset) and transform in seconds
                                 digs -= data['timestamps'][0]
                                 digs = digs.astype(dtype='float')/self.sample_rate
+                                digs = np.array([digs]) * pq.s
                             else:
                                 for chan in digchan:
                                     idx_chan = np.where(data['channel'] == chan)
@@ -657,6 +681,7 @@ class File:
                                     new_dig -= data['timestamps'][0]
                                     new_dig = new_dig.astype(dtype='float')/self.sample_rate
                                     digs.append(new_dig)
+                                digs = np.array(digs * pq.s)
 
                         self._digital_signals = [DigitalSignal(
                             channel_id=digchan,
@@ -690,6 +715,7 @@ class File:
                                 # remove start_time (offset) and transform in seconds
                                 syncs -= data['timestamps'][0]
                                 syncs = syncs.astype(dtype='float')/self.sample_rate
+                                syncs = np.array([syncs]) * pq.s
                             else:
                                 for chan in syncchan:
                                     idx_chan = np.where(data['channel'] == chan)
@@ -698,6 +724,7 @@ class File:
                                     new_sync -= data['timestamps'][0]
                                     new_sync = new_sync.astype(dtype='float')/self.sample_rate
                                     syncs.append(new_sync)
+                                syncs = np.array(syncs * pq.s)
 
                         self._sync_signals = [Sync(
                             channel_id=syncchan,
@@ -711,7 +738,7 @@ class File:
                             sample_rate=[]
                         )]
                 else:
-                    self._sync_signals = [DigitalSignal(
+                    self._sync_signals = [Sync(
                         channel_id=np.array([]),
                         times=np.array([]),
                         sample_rate=[]
@@ -719,7 +746,75 @@ class File:
 
                 self._digital_signals_dirty = False
                 self._events_dirty = False
-                self._events = data
+                # self._events = data
+
+
+    def clip_recording(self, clipping_times, start_end='start'):
+
+        if clipping_times is not None:
+            if clipping_times is not list:
+                if type(clipping_times[0]) is not pq.quantity.Quantity:
+                    raise AttributeError('clipping_times must be a quantity list of length 1 or 2')
+
+            clipping_times = [t.rescale(pq.s) for t in clipping_times]
+
+            for anas in self.analog_signals:
+                anas.signal = clip_anas(anas, self.times, clipping_times, start_end)
+            for digs in self.digital_in_signals:
+                digs.times = clip_digs(digs, clipping_times, start_end)
+                digs.times = digs.times - clipping_times[0]
+            for track in self.tracking:
+                track.positions, track.times = clip_tracking(track, clipping_times,start_end)
+
+            self._times = clip_times(self._times, clipping_times, start_end)
+            self._times -= self._times[0]
+            self._duration = self._times[-1] - self._times[0]
+        else:
+            print('Empty clipping times list.')
+
+
+    def sync_tracking_from_events(self, ttl_events):
+        '''
+
+        :param ttl_events:
+        :return:
+        '''
+        positions = []
+        times = []
+
+        for t, (pos, software_ts) in enumerate(zip(self.tracking[0].positions, self.tracking[0].times)):
+            # For each software ts find closest ttl_event
+            ts = np.zeros(len(software_ts))
+            ttl_idx = -1 * np.ones(len(software_ts), dtype='int64')
+
+            for i, s_ts in enumerate(software_ts):
+                ts[i], ttl_idx[i] = find_nearest(ttl_events, s_ts)
+
+            # A late osc msg might result in an error -> find second closest timestamp in those cases
+            wrong_ts_idx = np.where(np.diff(ts) == 0)[0]
+            iteration = 1
+            max_iter = 10
+            while len(wrong_ts_idx) != 0 and iteration < max_iter:
+                print('wrong assignments: ', len(wrong_ts_idx), ' Iteration: ', iteration)
+                for i, w_ts in enumerate(wrong_ts_idx):
+                    val, idx = find_nearest(ttl_events, software_ts[w_ts], not_in_idx=np.unique(ttl_idx))
+                    ts[w_ts] = val[0]
+                    ttl_idx[w_ts] = idx[0]
+                iteration += 1
+                wrong_ts_idx = np.where(np.diff(ts) == 0)[0]
+
+            # substitute missing positions with nans
+            missed_ttl = np.ones(len(ttl_events), dtype=bool)
+            missed_ttl[ttl_idx] = False
+            new_pos = np.zeros((pos.shape[0], len(ttl_events)))
+            new_pos[:, ttl_idx]  = pos
+            new_pos[:, missed_ttl] = np.nan
+
+            positions.append(new_pos)
+            times.append(ttl_events)
+
+        self.tracking[0].positions = positions
+        self.tracking[0].times = times
 
 
 def read_analog_binary_signals(filehandle, numchan):
@@ -932,7 +1027,7 @@ def readHeader(fh):
 
 def get_number_of_records(filepath):
     # Open the file
-    with file(filepath, 'rb') as f:
+    with open(filepath, 'rb') as f:
         # Read header info
         header = readHeader(f)
 
@@ -947,3 +1042,142 @@ def get_number_of_records(filepath):
         #     # raise IOError("file does not divide evenly into full records")
 
     return n_records
+
+# TODO require quantities and deal with it
+def clip_anas(analog_signals, times, clipping_times, start_end):
+    '''
+
+    :param analog_signals:
+    :param times:
+    :param clipping_times:
+    :param start_end:
+    :return:
+    '''
+
+    if len(analog_signals.signal) != 0:
+        times.rescale(pq.s)
+        if len(clipping_times) == 2:
+            idx = np.where((times > clipping_times[0]) & (times < clipping_times[1]))
+        elif len(clipping_times) ==  1:
+            if start_end == 'start':
+                idx = np.where(times > clipping_times[0])
+            elif start_end == 'end':
+                idx = np.where(times < clipping_times[0])
+        else:
+            raise AttributeError('clipping_times must be of length 1 or 2')
+
+        if len(analog_signals.signal.shape) == 2:
+            anas_clip = analog_signals.signal[:, idx[0]]
+        else:
+            anas_clip = analog_signals.signal[idx[0]]
+
+        return anas_clip
+    else:
+        return []
+
+
+def clip_digs(digital_signals, clipping_times, start_end):
+    '''
+
+    :param digital_signals:
+    :param clipping_times:
+    :param start_end:
+    :return:
+    '''
+
+    digs_clip = []
+    for i, dig in enumerate(digital_signals.times):
+        dig.rescale(pq.s)
+        if len(clipping_times) == 2:
+            idx = np.where((dig > clipping_times[0]) & (dig < clipping_times[1]))
+        elif len(clipping_times) == 1:
+            if start_end == 'start':
+                idx = np.where(dig > clipping_times[0])
+            elif start_end == 'end':
+                idx = np.where(dig < clipping_times[0])
+        else:
+            raise AttributeError('clipping_times must be of length 1 or 2')
+        digs_clip.append(dig[idx])
+
+    return np.array(digs_clip) * pq.s
+
+
+def clip_tracking(tracking, clipping_times, start_end):
+    '''
+
+    :param tracking:
+    :param clipping_times:
+    :param start_end:
+    :return:
+    '''
+    assert len(tracking.positions) == len(tracking.times)
+
+    track_clip = []
+    t_clip = []
+
+    for i, tr in enumerate(tracking.positions):
+        tracking.times[i].rescale(pq.s)
+        if len(clipping_times) == 2:
+            idx = np.where((tracking.times[i] > clipping_times[0]) & (tracking.times[i] < clipping_times[1]))
+        elif len(clipping_times) ==  1:
+            if start_end == 'start':
+                idx = np.where(tracking.times[i] > clipping_times[0])
+            elif start_end == 'end':
+                idx = np.where(tracking.times[i] < clipping_times[0])
+        else:
+            raise AttributeError('clipping_times must be of length 1 or 2')
+
+        track_clip.append(np.array([led[idx[0]] for led in tr]))
+        times = tracking.times[i][idx[0]] - clipping_times[0]
+        t_clip.append(times)
+
+    return track_clip, t_clip
+
+
+def clip_times(times, clipping_times, start_end):
+    '''
+
+    :param times:
+    :param clipping_times:
+    :param start_end:
+    :return:
+    '''
+    times.rescale(pq.s)
+
+    if len(clipping_times) == 2:
+        idx = np.where((times > clipping_times[0]) & (times < clipping_times[1]))
+    elif len(clipping_times) ==  1:
+        if start_end == 'start':
+            idx = np.where(times > clipping_times[0])
+        elif start_end == 'end':
+            idx = np.where(times < clipping_times[0])
+    else:
+        raise AttributeError('clipping_times must be of length 1 or 2')
+    times_clip = times[idx]
+
+    return times_clip
+
+
+def find_nearest(array, value, n=1, not_in_idx=None):
+
+    if not_in_idx is None:
+        if n==1:
+            idx = (np.abs(array-value)).argmin()
+        else:
+            idx = (np.abs(array-value)).argsort()[:n]
+        return array[idx], idx
+    else:
+        if len(array) != 0:
+            left_idx = np.ones(len(array), dtype=bool)
+            left_idx[not_in_idx] = False
+            left_array=array[left_idx]
+            if n==1:
+                idx = (np.abs(left_array-value)).argmin()
+            else:
+                idx = (np.abs(left_array-value)).argsort()[:n]
+            val = left_array[idx]
+            idx = np.where(array==val)
+            return array[idx], idx
+        else:
+            print('Array length must be greater than 0')
+            return None, -1

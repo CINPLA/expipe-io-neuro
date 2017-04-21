@@ -24,7 +24,7 @@ def _prepare_exdir_file(exdir_file):
     return general, subject, processing, epochs
 
 
-def convert(openephys_file, exdir_path, probefile):
+def convert(openephys_file, exdir_path):
     exdir_file = exdir.File(exdir_path)
     dtime = openephys_file._start_datetime.strftime('%Y-%m-%dT%H:%M:%S')
     exdir_file.attrs['session_start_time'] = dtime
@@ -39,7 +39,6 @@ def convert(openephys_file, exdir_path, probefile):
     acquisition.attrs["acquisition_system"] = 'OpenEphys'
 
     shutil.copytree(openephys_file._absolute_foldername, target_folder)
-    shutil.copy(probefile, op.join(target_folder, 'openephys_channelmap.prb'))
 
     print("Copied", openephys_file.session, "to", target_folder)
 
@@ -60,7 +59,7 @@ def _prepare_channel_groups(exdir_path, openephys_file):
         exdir_channel_group.attrs["electrode_idx"] = channel_identities - channel_identities[0]
         exdir_channel_group.attrs['electrode_group_id'] = openephys_channel_group.channel_group_id
         # TODO else: test if attrs are the same
-    return exdir_channel_groups, openephys_file
+    return exdir_channel_groups
 
 
 def generate_lfp(exdir_path, openephys_file):
@@ -108,11 +107,15 @@ def generate_spike_trains(exdir_path):
     acquisition = exdir_file["acquisition"]
     openephys_session = acquisition.attrs["openephys_session"]
     openephys_directory = op.join(acquisition.directory, openephys_session)
-    kwikfile = op.join(openephys_directory, openephys_session + '_klusta.kwik')
-    kwikio = neo.io.KwikIO(filename=kwikfile)
-    blk = kwikio.read_block()
-    exdirio = neo.io.ExdirIO(exdir_path)
-    exdirio.write_block(blk)
+    kwikfile = [f for f in os.listdir(openephys_directory) if f.endswith('_klusta.kwik')][0]
+    kwikfile = op.join(openephys_directory, kwikfile)
+    if op.exists(kwikfile):
+        kwikio = neo.io.KwikIO(filename=kwikfile)
+        blk = kwikio.read_block()
+        exdirio = neo.io.ExdirIO(exdir_path)
+        exdirio.write_block(blk)
+    else:
+        print('.kwik file is not in exdir folder')
 
 
 def generate_tracking(exdir_path, openephys_file):
@@ -128,8 +131,8 @@ def generate_tracking(exdir_path, openephys_file):
     for n, (times, coords) in enumerate(zip(tracking_data.times,
                                             tracking_data.positions)):
         led = position.require_group("led_" + str(n))
-        dset = led.require_dataset('data', coords * pq.m) # TODO units??
-        dset.attrs['num_samples'] = len(coords)
+        dset = led.require_dataset('data', coords.transpose() * pq.m) # TODO units??
+        dset.attrs['num_samples'] = coords.shape[1]
         dset = led.require_dataset("timestamps", times)
         dset.attrs['num_samples'] = len(times)
         led.attrs['start_time'] = 0 * pq.s
@@ -139,22 +142,21 @@ def generate_tracking(exdir_path, openephys_file):
 class OpenEphysFilerecord(Filerecord):
     def __init__(self, action, filerecord_id=None):
         super().__init__(action, filerecord_id)
+    def import_file(self, openephys_file):
+        convert(openephys_file=openephys_file,
+                exdir_path=self.local_path)
 
-    def import_file(self, openephys_directory):
-        convert(openephys_directory=openephys_directory,
-                exdir_path=op.join(settings["data_path"], self.local_path))
+    def generate_tracking(self, openephys_file):
+        generate_tracking(self.local_path, openephys_file)
 
-    def generate_tracking(self):
-        generate_tracking(self.local_path)
+    def generate_lfp(self, openephys_file):
+        generate_analog_signals(self.local_path, openephys_file)
 
-    def generate_lfp(self):
-        generate_analog_signals(self.local_path)
+    def generate_spike_trains(self, openephys_file):
+        generate_spike_trains(self.local_path, openephys_file)
 
-    def generate_spike_trains(self):
-        generate_spike_trains(self.local_path)
-
-    def generate_inp(self):
-        generate_inp(self.local_path)
+    def generate_inp(self, openephys_file):
+        generate_inp(self.local_path, openephys_file)
 
 
 if __name__ == '__main__':

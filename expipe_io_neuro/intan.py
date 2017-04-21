@@ -24,9 +24,9 @@ def _prepare_exdir_file(exdir_file):
     return general, subject, processing, epochs
 
 
-def convert(intan_filepath, exdir_path, probefile):
+def convert(intan_file, exdir_path, probefile, copyfiles=True):
 
-    intan_file = pyintan.File(intan_filepath, probefile)
+    # intan_file = pyintan.File(intan_filepath, probefile)
     exdir_file = exdir.File(exdir_path)
     dtime = intan_file.datetime.strftime('%Y-%m-%dT%H:%M:%S')
     exdir_file.attrs['session_start_time'] = dtime
@@ -36,32 +36,31 @@ def convert(intan_filepath, exdir_path, probefile):
     processing = exdir_file.require_group("processing")
     subject = general.require_group("subject")
 
-    print(acquisition.directory)
-    target_folder = op.join(acquisition.directory, intan_file.session)
-    os.makedirs(target_folder)
     acquisition.attrs["intan_session"] = intan_file.session
     acquisition.attrs["acquisition_system"] = 'Intan'
-    print(target_folder, intan_file._absolute_filename)
 
-    shutil.copy(intan_file._absolute_filename, target_folder)
-    shutil.copy(probefile, op.join(target_folder, 'intan_channelmap.prb'))
+    if copyfiles:
+        target_folder = op.join(acquisition.directory, intan_file.session)
+        os.makedirs(target_folder)
+        shutil.copy(intan_file._absolute_filename, target_folder)
+        shutil.copy(probefile, op.join(target_folder, 'intan_channelmap.prb'))
 
-    print("Copied", intan_file.session, "to", target_folder)
-
-
-def load_intan_file(exdir_path):
-    acquisition = exdir_path["acquisition"]
-    intan_session = acquisition.attrs["intan_session"]
-    intan_directory = op.join(acquisition.directory, intan_session)
-    probefile = op.join(intan_directory, 'intan_channelmap.prb')
-    intan_fullpath = op.join(intan_directory, intan_session+'.rhs')
-    return pyintan.File(intan_fullpath, probefile)
+        print("Copied", intan_file.session, "to", target_folder)
 
 
-def _prepare_channel_groups(exdir_path):
+# def load_intan_file(exdir_path):
+#     acquisition = exdir_path["acquisition"]
+#     intan_session = acquisition.attrs["intan_session"]
+#     intan_directory = op.join(acquisition.directory, intan_session)
+#     probefile = op.join(intan_directory, 'intan_channelmap.prb')
+#     intan_fullpath = op.join(intan_directory, intan_session+'.rhs')
+#     return pyintan.File(intan_fullpath, probefile)
+
+
+def _prepare_channel_groups(exdir_path, intan_file):
     exdir_file = exdir.File(exdir_path)
     general, subject, processing, epochs = _prepare_exdir_file(exdir_file)
-    intan_file = load_intan_file(exdir_path=exdir_file)
+
     exdir_channel_groups = []
     elphys = processing.require_group('electrophysiology')
     for intan_channel_group in intan_file.channel_groups:
@@ -75,13 +74,13 @@ def _prepare_channel_groups(exdir_path):
         exdir_channel_group.attrs["electrode_idx"] = channel_identities - channel_identities[0]
         exdir_channel_group.attrs['electrode_group_id'] = intan_channel_group.channel_group_id
         # TODO else: test if attrs are the same
-    return exdir_channel_groups, intan_file
+    return exdir_channel_groups
 
 
-def generate_lfp(exdir_path):
+def generate_lfp(exdir_path, intan_file):
     import scipy.signal as ss
     import copy
-    exdir_channel_groups, intan_file = _prepare_channel_groups(exdir_path)
+    exdir_channel_groups = _prepare_channel_groups(exdir_path, intan_file)
     for channel_group, intan_channel_group in zip(exdir_channel_groups,
                                                       intan_file.channel_groups):
         lfp = channel_group.require_group("LFP")
@@ -93,7 +92,7 @@ def generate_lfp(exdir_path):
                 # decimate
                 target_rate = 1000 * pq.Hz
                 signal = np.array(analog_signal.signal, dtype=float)
-                signal *= channel.gain
+
                 sample_rate = copy.copy(analog_signal.sample_rate)
                 qs = [10, int((analog_signal.sample_rate / target_rate) / 10)]
                 for q in qs:
@@ -101,6 +100,8 @@ def generate_lfp(exdir_path):
                     sample_rate /= q
                 t_stop = len(signal) / sample_rate
                 assert round(t_stop, 2) == round(intan_file.duration, 2), '{}, {}'.format(t_stop, intan_file.duration)
+
+                signal = signal * pq.uV
 
                 lfp_timeseries.attrs["num_samples"] = len(signal)
                 lfp_timeseries.attrs["start_time"] = 0 * pq.s
@@ -115,17 +116,20 @@ def generate_lfp(exdir_path):
                 data.attrs["sample_rate"] = sample_rate
 
 
-# def generate_spike_trains(exdir_path):
-#     import neo
-#     exdir_file = exdir.File(exdir_path)
-#     acquisition = exdir_file["acquisition"]
-#     intan_session = acquisition.attrs["intan_session"]
-#     intan_directory = op.join(acquisition.directory, intan_session)
-#     kwikfile = op.join(intan_directory, intan_session + '_klusta.kwik')
-#     kwikio = neo.io.KwikIO(filename=kwikfile)
-#     blk = kwikio.read_block()
-#     exdirio = neo.io.ExdirIO(exdir_path)
-#     exdirio.write_block(blk)
+def generate_spike_trains(exdir_path):
+    import neo
+    exdir_file = exdir.File(exdir_path)
+    acquisition = exdir_file["acquisition"]
+    intan_session = acquisition.attrs["intan_session"]
+    intan_directory = op.join(acquisition.directory, intan_session)
+    kwikfile = [f for f in os.listdir(intan_directory) if f.endswith('_klusta.kwik')][0]
+    if op.exists(kwikfile):
+        kwikio = neo.io.KwikIO(filename=kwikfile)
+        blk = kwikio.read_block()
+        exdirio = neo.io.ExdirIO(exdir_path)
+        exdirio.write_block(blk)
+    else:
+        print('.kwik file is not in exdir folder')
 
 
 # class OpenEphysFilerecord(Filerecord):
