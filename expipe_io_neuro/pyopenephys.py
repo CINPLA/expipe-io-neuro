@@ -64,6 +64,11 @@ def _cut_to_same_len(*args):
     return tuple(out)
 
 
+def _zeros_to_nan(*args):
+    for arg in args:
+        arg[arg == 0.0] = np.nan
+
+
 class Channel:
     def __init__(self, index, name, gain, channel_id):
         self.index = index
@@ -470,6 +475,7 @@ class File:
             avg_period = np.mean(difft)
             sample_rate_s = 1. / float(avg_period) * pq.Hz
             x, y, ts = _cut_to_same_len(x, y, ts)
+            _zeros_to_nan(x, y)
             coord_s = [np.array([x, y]).reshape((len(x), 2))]
             ts_s = [ts]
 
@@ -496,12 +502,8 @@ class File:
                 avg_period = np.mean(difft)
                 sample_rate_ = 1. / float(avg_period) * pq.Hz
 
-                # Camera (0,0) is top left corner -> adjust y
-                # coord_ = np.array([x_, 1-y_])
-                # xprev = x_
                 x_, y_, ts_ = _cut_to_same_len(x_, y_, ts_)
-                # assert np.array_equal(xprev[:10], x_[:10]), '{}\n{}'.format(xprev[:10], x_[:10])
-                # assert not np.array_equal(xprev[:10], y_[:10])
+                _zeros_to_nan(x_, y_)
                 coord_ = np.array([x_, y_]).reshape((len(x_), 2))
                 coord_s.append(coord_)
                 ts_s.append(ts_)

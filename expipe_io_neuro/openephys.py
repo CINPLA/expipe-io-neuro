@@ -24,8 +24,7 @@ def _prepare_exdir_file(exdir_file):
     return general, subject, processing, epochs
 
 
-def convert(openephys_directory, exdir_path, probefile):
-    openephys_file = pyopenephys.File(openephys_directory, probefile)
+def convert(openephys_file, exdir_path, probefile):
     exdir_file = exdir.File(exdir_path)
     dtime = openephys_file._start_datetime.strftime('%Y-%m-%dT%H:%M:%S')
     exdir_file.attrs['session_start_time'] = dtime
@@ -45,18 +44,9 @@ def convert(openephys_directory, exdir_path, probefile):
     print("Copied", openephys_file.session, "to", target_folder)
 
 
-def load_openephys_file(exdir_file):
-    acquisition = exdir_file["acquisition"]
-    openephys_session = acquisition.attrs["openephys_session"]
-    openephys_directory = op.join(acquisition.directory, openephys_session)
-    probefile = op.join(openephys_directory, 'openephys_channelmap.prb')
-    return pyopenephys.File(openephys_directory, probefile)
-
-
-def _prepare_channel_groups(exdir_path):
+def _prepare_channel_groups(exdir_path, openephys_file):
     exdir_file = exdir.File(exdir_path)
     general, subject, processing, epochs = _prepare_exdir_file(exdir_file)
-    openephys_file = load_openephys_file(exdir_file=exdir_file)
     exdir_channel_groups = []
     elphys = processing.require_group('electrophysiology')
     for openephys_channel_group in openephys_file.channel_groups:
@@ -73,10 +63,10 @@ def _prepare_channel_groups(exdir_path):
     return exdir_channel_groups, openephys_file
 
 
-def generate_lfp(exdir_path):
+def generate_lfp(exdir_path, openephys_file):
     import scipy.signal as ss
     import copy
-    exdir_channel_groups, openephys_file = _prepare_channel_groups(exdir_path)
+    exdir_channel_groups = _prepare_channel_groups(exdir_path, openephys_file)
     for channel_group, openephys_channel_group in zip(exdir_channel_groups,
                                                       openephys_file.channel_groups):
         lfp = channel_group.require_group("LFP")
@@ -125,10 +115,9 @@ def generate_spike_trains(exdir_path):
     exdirio.write_block(blk)
 
 
-def generate_tracking(exdir_path):
+def generate_tracking(exdir_path, openephys_file):
     exdir_file = exdir.File(exdir_path)
     general, subject, processing, epochs = _prepare_exdir_file(exdir_file)
-    openephys_file = load_openephys_file(exdir_file=exdir_file)
     tracking = processing.require_group('tracking')
     # NOTE openephys supports only one camera, but other setups might support several
     camera = tracking.require_group("camera_0")
@@ -169,15 +158,15 @@ class OpenEphysFilerecord(Filerecord):
 
 
 if __name__ == '__main__':
-    openephys_directory = '/home/mikkel/Ephys/1703_2017-04-15_13-34-12'
-    exdir_path = '/tmp/1703-150417-01/main.exdir'
+    # openephys_directory = '/home/mikkel/Ephys/1703_2017-04-15_13-34-12'
+    exdir_path = 'c:/temp/1704-190417-01/main.exdir'
     probefile = '/home/mikkel/.config/expipe/tetrodes32ch-klusta-oe.prb'
     # if op.exists(exdir_path):
     #     shutil.rmtree(exdir_path)
     # convert(openephys_directory=openephys_directory,
     #         exdir_path=exdir_path,
     #         probefile=probefile)
-    generate_tracking(exdir_path)
+    # generate_tracking(exdir_path)
     # generate_lfp(exdir_path)
-    # generate_spike_trains(exdir_path)
+    generate_spike_trains(exdir_path)
     # generate_inp(exdir_path)
