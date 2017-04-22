@@ -99,7 +99,7 @@ def generate_lfp(exdir_path, intan_file):
                     signal = ss.decimate(signal, q=q, zero_phase=True)
                     sample_rate /= q
                 t_stop = len(signal) / sample_rate
-                assert round(t_stop, 2) == round(intan_file.duration, 2), '{}, {}'.format(t_stop, intan_file.duration)
+                assert round(t_stop, 1) == round(intan_file.duration, 1), '{}, {}'.format(t_stop, intan_file.duration)
 
                 signal = signal * pq.uV
 
@@ -123,11 +123,13 @@ def generate_spike_trains(exdir_path):
     intan_session = acquisition.attrs["intan_session"]
     intan_directory = op.join(acquisition.directory, intan_session)
     kwikfile = [f for f in os.listdir(intan_directory) if f.endswith('_klusta.kwik')][0]
-    if op.exists(kwikfile):
-        kwikio = neo.io.KwikIO(filename=kwikfile)
-        blk = kwikio.read_block()
-        exdirio = neo.io.ExdirIO(exdir_path)
-        exdirio.write_block(blk)
+    if len(kwikfile) > 0:
+        kwikfile = op.join(openephys_directory, kwikfile)[0]
+        if op.exists(kwikfile):
+            kwikio = neo.io.KwikIO(filename=kwikfile)
+            blk = kwikio.read_block()
+            exdirio = neo.io.ExdirIO(exdir_path)
+            exdirio.write_block(blk)
     else:
         print('.kwik file is not in exdir folder')
 

@@ -85,7 +85,7 @@ def generate_lfp(exdir_path, openephys_file):
                     signal = ss.decimate(signal, q=q, zero_phase=True)
                     sample_rate /= q
                 t_stop = len(signal) / sample_rate
-                assert round(t_stop, 2) == round(openephys_file.duration, 2), '{}, {}'.format(t_stop, openephys_file.duration)
+                assert round(t_stop, 1) == round(openephys_file.duration, 1), '{}, {}'.format(t_stop, openephys_file.duration)
                 signal = signal * channel.gain
                 lfp_timeseries.attrs["num_samples"] = len(signal)
                 lfp_timeseries.attrs["start_time"] = 0 * pq.s
@@ -107,13 +107,14 @@ def generate_spike_trains(exdir_path):
     acquisition = exdir_file["acquisition"]
     openephys_session = acquisition.attrs["openephys_session"]
     openephys_directory = op.join(acquisition.directory, openephys_session)
-    kwikfile = [f for f in os.listdir(openephys_directory) if f.endswith('_klusta.kwik')][0]
-    kwikfile = op.join(openephys_directory, kwikfile)
-    if op.exists(kwikfile):
-        kwikio = neo.io.KwikIO(filename=kwikfile)
-        blk = kwikio.read_block()
-        exdirio = neo.io.ExdirIO(exdir_path)
-        exdirio.write_block(blk)
+    kwikfile = [f for f in os.listdir(openephys_directory) if f.endswith('_klusta.kwik')]
+    if len(kwikfile) > 0:
+        kwikfile = op.join(openephys_directory, kwikfile)[0]
+        if op.exists(kwikfile):
+            kwikio = neo.io.KwikIO(filename=kwikfile)
+            blk = kwikio.read_block()
+            exdirio = neo.io.ExdirIO(exdir_path)
+            exdirio.write_block(blk)
     else:
         print('.kwik file is not in exdir folder')
 
