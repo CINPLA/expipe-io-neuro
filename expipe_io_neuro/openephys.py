@@ -38,9 +38,9 @@ def convert(openephys_file, exdir_path):
     acquisition.attrs["openephys_session"] = openephys_file.session
     acquisition.attrs["acquisition_system"] = 'OpenEphys'
 
+    print("Copying ", openephys_file._absolute_foldername, " to ", target_folder)
     shutil.copytree(openephys_file._absolute_foldername, target_folder)
 
-    print("Copied", openephys_file.session, "to", target_folder)
 
 
 def _prepare_channel_groups(exdir_path, openephys_file):
