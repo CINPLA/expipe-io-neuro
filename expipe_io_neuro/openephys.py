@@ -160,15 +160,15 @@ class OpenEphysFilerecord(Filerecord):
 
 
 if __name__ == '__main__':
-    # openephys_directory = '/home/mikkel/Ephys/1703_2017-04-15_13-34-12'
-    exdir_path = 'c:/temp/1704-190417-01/main.exdir'
+    openephys_directory = '/home/mikkel/Ephys/1704_2017-04-19_19-05-04_01'
+    exdir_path = '/tmp/1704-190417-01/main.exdir'
     probefile = '/home/mikkel/.config/expipe/tetrodes32ch-klusta-oe.prb'
+    openephys_file = pyopenephys.File(openephys_directory, probefile)
     # if op.exists(exdir_path):
     #     shutil.rmtree(exdir_path)
-    # convert(openephys_directory=openephys_directory,
-    #         exdir_path=exdir_path,
-    #         probefile=probefile)
-    # generate_tracking(exdir_path)
-    # generate_lfp(exdir_path)
+    # convert(openephys_directory=openephys_file,
+    #         exdir_path=exdir_path)
+    # generate_tracking(exdir_path, openephys_file)
+    # generate_lfp(exdir_path, openephys_file)
     generate_spike_trains(exdir_path)
     # generate_inp(exdir_path)
