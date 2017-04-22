@@ -64,6 +64,11 @@ def _cut_to_same_len(*args):
     return tuple(out)
 
 
+def _zeros_to_nan(*args):
+    for arg in args:
+        arg[arg == 0.0] = np.nan
+
+
 class Channel:
     def __init__(self, index, name, gain, channel_id):
         self.index = index
@@ -1176,5 +1181,3 @@ def find_nearest(array, value, n=1, not_in_idx=None):
         else:
             print('Array length must be greater than 0')
             return None, -1
-
-
