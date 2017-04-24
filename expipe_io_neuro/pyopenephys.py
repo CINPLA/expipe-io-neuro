@@ -146,6 +146,38 @@ class TrackingData:
         )
 
 
+class SpikeTrain:
+    def __init__(self, times, waveforms,
+                 spike_count, channel_count, samples_per_spike,
+                 sample_rate, attrs):
+        self.times = times
+        self.waveforms = waveforms
+        self.attrs = attrs
+
+        assert(self.waveforms.shape[0] == spike_count)
+        assert(self.waveforms.shape[1] == channel_count)
+        assert(self.waveforms.shape[2] == samples_per_spike)
+
+        self.spike_count = spike_count
+        self.channel_count = channel_count
+        self.samples_per_spike = samples_per_spike
+        self.sample_rate = sample_rate
+
+    @property
+    def num_spikes(self):
+        """
+        Alias for spike_count, using same name as in .[0-9]* file.
+        """
+        return self.spike_count
+
+    @property
+    def num_chans(self):
+        """
+        Alias for channel_count, using same name as in .[0-9]* file.
+        """
+        return self.channel_count
+
+
 class File:
     """
     Class for reading experimental data from an OpenEphys dataset.
@@ -1181,3 +1213,72 @@ def find_nearest(array, value, n=1, not_in_idx=None):
         else:
             print('Array length must be greater than 0')
             return None, -1
+
+
+def loadSpikes(filepath):
+    
+    # doesn't quite work...spikes are transposed in a weird way    
+    
+    data = { }
+    
+    print('loading spikes...')
+    
+    f = open(filepath,'rb')
+    header = readHeader(f)
+    
+    if float(header[' version']) < 0.4:
+        raise Exception('Loader is only compatible with .spikes files with version 0.4 or higher')
+     
+    data['header'] = header 
+    numChannels = int(header['num_channels'])
+    numSamples = 40 # **NOT CURRENTLY WRITTEN TO HEADER**
+    
+    spikes = np.zeros((MAX_NUMBER_OF_SPIKES, numSamples, numChannels))
+    timestamps = np.zeros(MAX_NUMBER_OF_SPIKES)
+    source = np.zeros(MAX_NUMBER_OF_SPIKES)
+    gain = np.zeros((MAX_NUMBER_OF_SPIKES, numChannels))
+    thresh = np.zeros((MAX_NUMBER_OF_SPIKES, numChannels))
+    sortedId = np.zeros((MAX_NUMBER_OF_SPIKES, numChannels))
+    recNum = np.zeros(MAX_NUMBER_OF_SPIKES)
+    
+    currentSpike = 0
+    
+    while f.tell() < os.fstat(f.fileno()).st_size:
+        
+        eventType = np.fromfile(f, np.dtype('<u1'),1) #always equal to 4, discard
+        timestamps[currentSpike] = np.fromfile(f, np.dtype('<i8'), 1)
+        software_timestamp = np.fromfile(f, np.dtype('<i8'), 1)
+        source[currentSpike] = np.fromfile(f, np.dtype('<u2'), 1)
+        numChannels = np.fromfile(f, np.dtype('<u2'), 1)
+        numSamples = np.fromfile(f, np.dtype('<u2'), 1)
+        sortedId[currentSpike] = np.fromfile(f, np.dtype('<u2'),1)
+        electrodeId = np.fromfile(f, np.dtype('<u2'),1)
+        channel = np.fromfile(f, np.dtype('<u2'),1)
+        color = np.fromfile(f, np.dtype('<u1'), 3)
+        pcProj = np.fromfile(f, np.float32, 2)
+        sampleFreq = np.fromfile(f, np.dtype('<u2'),1)
+        
+        waveforms = np.fromfile(f, np.dtype('<u2'), numChannels*numSamples)
+        wv = np.reshape(waveforms, (numSamples, numChannels))
+        
+        gain[currentSpike,:] = np.fromfile(f, np.float32, numChannels)
+        thresh[currentSpike,:] = np.fromfile(f, np.dtype('<u2'), numChannels)
+        
+        recNum[currentSpike] = np.fromfile(f, np.dtype('<u2'), 1)
+
+        #print wv.shape        
+        
+        for ch in range(numChannels):
+            spikes[currentSpike,:,ch] = (np.float64(wv[:,ch])-32768)/(gain[currentSpike,ch]/1000)
+        
+        currentSpike += 1
+        
+    data['spikes'] = spikes[:currentSpike,:,:]
+    data['timestamps'] = timestamps[:currentSpike]
+    data['source'] = source[:currentSpike]
+    data['gain'] = gain[:currentSpike,:]
+    data['thresh'] = thresh[:currentSpike,:]
+    data['recordingNumber'] = recNum[:currentSpike]
+    data['sortedId'] = sortedId[:currentSpike]
+
+    return data
