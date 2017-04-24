@@ -1,4 +1,3 @@
-import pyopenephys
 import exdir
 import shutil
 import glob
@@ -109,7 +108,7 @@ def generate_spike_trains(exdir_path, openephys_file, source='klusta'):
         openephys_directory = op.join(acquisition.directory, openephys_session)
         kwikfile = [f for f in os.listdir(openephys_directory) if f.endswith('_klusta.kwik')]
         if len(kwikfile) > 0:
-            kwikfile = op.join(openephys_directory, kwikfile)[0]
+            kwikfile = op.join(openephys_directory, kwikfile[0])
             if op.exists(kwikfile):
                 kwikio = neo.io.KwikIO(filename=kwikfile)
                 blk = kwikio.read_block()

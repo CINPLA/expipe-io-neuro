@@ -1,4 +1,3 @@
-import pyintan
 import exdir
 import shutil
 import glob
@@ -24,7 +23,7 @@ def _prepare_exdir_file(exdir_file):
     return general, subject, processing, epochs
 
 
-def convert(intan_file, exdir_path, probefile, copyfiles=True):
+def convert(intan_file, exdir_path, copyfiles=True):
 
     # intan_file = pyintan.File(intan_filepath, probefile)
     exdir_file = exdir.File(exdir_path)
@@ -43,7 +42,6 @@ def convert(intan_file, exdir_path, probefile, copyfiles=True):
         target_folder = op.join(acquisition.directory, intan_file.session)
         os.makedirs(target_folder)
         shutil.copy(intan_file._absolute_filename, target_folder)
-        shutil.copy(probefile, op.join(target_folder, 'intan_channelmap.prb'))
 
         print("Copied", intan_file.session, "to", target_folder)
 
@@ -124,7 +122,7 @@ def generate_spike_trains(exdir_path):
     intan_directory = op.join(acquisition.directory, intan_session)
     kwikfile = [f for f in os.listdir(intan_directory) if f.endswith('_klusta.kwik')][0]
     if len(kwikfile) > 0:
-        kwikfile = op.join(openephys_directory, kwikfile)[0]
+        kwikfile = op.join(intan_directory, kwikfile[0])
         if op.exists(kwikfile):
             kwikio = neo.io.KwikIO(filename=kwikfile)
             blk = kwikio.read_block()
