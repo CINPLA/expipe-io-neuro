@@ -118,13 +118,12 @@ def generate_spike_trains(exdir_path, openephys_file, source='klusta'):
         else:
             print('.kwik file is not in exdir folder')
     elif source == 'openephys':
-        print(openephys_file.spiketains)
-        # exdir_channel_groups = _prepare_channel_groups(exdir_path, openephys_file)
-        # for channel_group, openephys_channel_group in zip(exdir_channel_groups,
-        #                                                   openephys_file.channel_groups):
-        #     group_id = openephys_channel_group.channel_group_id
-        #     print('Loading spikes from, channel group ', group_id)
-        #     print(channel_group.spiketains)
+        exdir_channel_groups = _prepare_channel_groups(exdir_path, openephys_file)
+        for channel_group, openephys_channel_group in zip(exdir_channel_groups,
+                                                          openephys_file.channel_groups):
+            group_id = openephys_channel_group.channel_group_id
+            print('Loading spikes from, channel group ', group_id)
+            # print(channel_group.spiketains)
     else:
         raise ValueError(source + ' not supported')
 
