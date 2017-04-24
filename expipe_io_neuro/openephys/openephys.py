@@ -1,4 +1,4 @@
-from . import pyopenephys
+import pyopenephys
 import exdir
 import shutil
 import glob

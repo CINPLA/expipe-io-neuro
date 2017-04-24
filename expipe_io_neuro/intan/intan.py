@@ -1,4 +1,4 @@
-from . import pyintan
+import pyintan
 import exdir
 import shutil
 import glob
