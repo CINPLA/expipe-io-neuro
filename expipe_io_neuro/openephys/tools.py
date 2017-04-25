@@ -279,39 +279,39 @@ def loadSpikes(filepath):
 
     while f.tell() < os.fstat(f.fileno()).st_size:
 
-        eventType = np.fromfile(f, np.dtype('<u1'),1) #always equal to 4, discard
         timestamps[currentSpike] = np.fromfile(f, np.dtype('<i8'), 1)
+        eventType = np.fromfile(f, np.dtype('<u1'), 1) #always equal to 4, discard
         software_timestamp = np.fromfile(f, np.dtype('<i8'), 1)
         source[currentSpike] = np.fromfile(f, np.dtype('<u2'), 1)
         numChannels = int(np.fromfile(f, np.dtype('<u2'), 1))
         numSamples = int(np.fromfile(f, np.dtype('<u2'), 1))
-        sortedId[currentSpike] = np.fromfile(f, np.dtype('<u2'),1)
-        electrodeId = np.fromfile(f, np.dtype('<u2'),1)
-        channel = np.fromfile(f, np.dtype('<u2'),1)
+        sortedId[currentSpike] = np.fromfile(f, np.dtype('<u2'), 1)
+        electrodeId = np.fromfile(f, np.dtype('<u2'), 1)
+        channel = np.fromfile(f, np.dtype('<u2'), 1)
         color = np.fromfile(f, np.dtype('<u1'), 3)
         pcProj = np.fromfile(f, np.float32, 2)
-        sampleFreq = np.fromfile(f, np.dtype('<u2'),1)
+        sampleFreq = np.fromfile(f, np.dtype('<u2'), 1)
 
-        waveforms = np.fromfile(f, np.dtype('<u2'), numChannels*numSamples)
+        waveforms = np.fromfile(f, np.dtype('<u2'), numChannels * numSamples)
         wv = np.reshape(waveforms, (numSamples, numChannels))
 
-        gain[currentSpike,:] = np.fromfile(f, np.float32, numChannels)
-        thresh[currentSpike,:] = np.fromfile(f, np.dtype('<u2'), numChannels)
+        gain[currentSpike, :] = np.fromfile(f, np.float32, numChannels)
+        thresh[currentSpike, :] = np.fromfile(f, np.dtype('<u2'), numChannels)
 
         recNum[currentSpike] = np.fromfile(f, np.dtype('<u2'), 1)
 
         #print wv.shape
 
         for ch in range(numChannels):
-            spikes[currentSpike,:,ch] = (np.float64(wv[:,ch])-32768)/(gain[currentSpike,ch]/1000)
+            spikes[currentSpike, :, ch] = (np.float64(wv[:,ch])-32768)/(gain[currentSpike,ch]/1000)
 
         currentSpike += 1
 
-    data['spikes'] = spikes[:currentSpike,:,:]
+    data['spikes'] = spikes[:currentSpike, :, :]
     data['timestamps'] = timestamps[:currentSpike]
     data['source'] = source[:currentSpike]
-    data['gain'] = gain[:currentSpike,:]
-    data['thresh'] = thresh[:currentSpike,:]
+    data['gain'] = gain[:currentSpike, :]
+    data['thresh'] = thresh[:currentSpike, :]
     data['recordingNumber'] = recNum[:currentSpike]
     data['sortedId'] = sortedId[:currentSpike]
 

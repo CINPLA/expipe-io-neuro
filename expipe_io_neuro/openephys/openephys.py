@@ -1,4 +1,3 @@
-import pyopenephys
 import exdir
 import shutil
 import glob
@@ -118,32 +117,34 @@ def generate_spike_trains(exdir_path, openephys_file, source='klusta'):
         else:
             print('.kwik file is not in exdir folder')
     elif source == 'openephys':
-        blk = neo.Block()
+        exdirio = neo.io.ExdirIO(exdir_path)
         for oe_group in openephys_file.channel_groups:
             channel_ids = [ch.id for ch in oe_group.channels]
             channel_index = [ch.index for ch in oe_group.channels]
-            chx = neo.ChannelIndex(name='channel group {}'.format(oe_group.id),
-                                   channel_ids=channel_ids,
-                                   index=channel_index,
-                                   group_id=oe_group.id)
+            chx = neo.ChannelIndex(
+                name='channel group {}'.format(oe_group.id),
+                channel_ids=channel_ids,
+                index=channel_index,
+                group_id=oe_group.id
+            )
             for sptr in oe_group.spiketrains:
-                unit = neo.Unit(cluster_group='unsorted',
-                                cluster_id=sptr.attrs['cluster_id'],
-                                name=sptr.attrs['cluster_id'])
+                unit = neo.Unit(
+                    cluster_group='unsorted',
+                    cluster_id=sptr.attrs['cluster_id'],
+                    name=sptr.attrs['name']
+                )
                 unit.spiketrains.append(
                     neo.SpikeTrain(
                         times=sptr.times,
                         waveforms=sptr.waveforms,
                         sampling_rate=sptr.sample_rate,
-                        units='s',
+                        t_stop=sptr.t_stop,
                         **sptr.attrs
                     )
                 )
                 chx.units.append(unit)
-            blk.channel_indexes.append(chx)
-
-        exdirio = neo.io.ExdirIO(exdir_path)
-        exdirio.write_block(blk)
+            exdirio.write_channelindex(chx, start_time=0 * pq.s,
+                                       stop_time=openephys_file.duration)
     else:
         raise ValueError(source + ' not supported')
 
@@ -191,8 +192,8 @@ class OpenEphysFilerecord(Filerecord):
 
 
 if __name__ == '__main__':
-    openephys_directory = '/home/mikkel/Ephys/1704_2017-04-19_19-05-04_01'
-    exdir_path = 'nada'
+    openephys_directory = '/home/mikkel/Ephys/1715_2017-04-23_12-31-07_01'
+    exdir_path = 'nada.exdir'
     probefile = '/home/mikkel/.config/expipe/tetrodes32ch-klusta-oe.prb'
     openephys_file = pyopenephys.File(openephys_directory, probefile)
     # if op.exists(exdir_path):

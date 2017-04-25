@@ -29,7 +29,7 @@ from datetime import datetime
 import locale
 import struct
 import platform
-from tools import (_read_python, _cut_to_same_len, _zeros_to_nan, clip_anas,
+from .tools import (_read_python, _cut_to_same_len, _zeros_to_nan, clip_anas,
                    readHeader, loadSpikes, clip_digs, clip_times,
                    clip_tracking, find_nearest, get_number_of_records,
                    read_analog_continuous_signal, read_analog_binary_signals)
@@ -110,14 +110,16 @@ class TrackingData:
 class SpikeTrain:
     def __init__(self, times, waveforms,
                  spike_count, channel_count, samples_per_spike,
-                 sample_rate, **attrs):
+                 sample_rate, t_stop, **attrs):
         self.times = times
         self.waveforms = waveforms
         self.attrs = attrs
+        self.t_stop = t_stop
 
         assert(self.waveforms.shape[0] == spike_count)
         assert(self.waveforms.shape[1] == channel_count)
         assert(self.waveforms.shape[2] == samples_per_spike)
+        assert(times[-1] <= self.t_stop)
 
         self.spike_count = spike_count
         self.channel_count = channel_count
@@ -631,7 +633,7 @@ class File:
             if len(filenames) == 0:
                 return
             for fname in filenames:
-                print('Loading spikes from, ', fname.split('.')[0])
+                print('Loading spikes from ', fname.split('.')[0])
                 data = loadSpikes(op.join(self._absolute_foldername, fname))
                 clusters = data['recordingNumber']
                 group_id = int(np.unique(data['source']))
@@ -639,19 +641,24 @@ class File:
                 for cluster in np.unique(clusters):
                     wf = data['spikes'][clusters == cluster]
                     wf = wf.swapaxes(1, 2)
-                    self._spiketrains.append(SpikeTrain(
-                        times=data['timestamps'][clusters == cluster],
-                        waveforms=wf,
-                        spike_count=sum(clusters == cluster),
-                        channel_count=int(data['header']['num_channels']),
-                        sample_rate=float(data['header']['sampleRate']),
-                        channel_group_id=group_id,
-                        samples_per_spike=40, # TODO read this from file
-                        gain=data['gain'][clusters == cluster],
-                        threshold=data['thresh'][clusters == cluster],
-                        name='cluster #{}'.format(cluster),
-                        cluster_id=cluster
-                    ))
+                    sample_rate = int(data['header']['sampleRate'])
+                    times = data['timestamps'][clusters == cluster] / sample_rate / 1000
+                    self._spiketrains.append(
+                        SpikeTrain(
+                            times=times * pq.s,
+                            waveforms=wf * pq.uV,
+                            spike_count=sum(clusters == cluster),
+                            channel_count=int(data['header']['num_channels']),
+                            sample_rate=sample_rate * pq.Hz,
+                            channel_group_id=group_id,
+                            samples_per_spike=40, # TODO read this from file
+                            gain=data['gain'][clusters == cluster],
+                            threshold=data['thresh'][clusters == cluster],
+                            name='Unit #{}'.format(cluster),
+                            cluster_id=int(cluster),
+                            t_stop=self.duration.rescale('s')
+                        )
+                    )
 
         self._spiketrains_dirty = False
 
