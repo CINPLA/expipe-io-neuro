@@ -35,7 +35,8 @@ def convert(openephys_file, exdir_path):
 
     target_folder = op.join(acquisition.directory, openephys_file.session)
     acquisition.attrs["openephys_session"] = openephys_file.session
-    acquisition.attrs["acquisition_system"] = 'OpenEphys'
+    if openephys_file.rhythm:
+        acquisition.attrs["acquisition_system"] = 'OpenEphys'
 
     print("Copying ", openephys_file._absolute_foldername, " to ", target_folder)
     shutil.copytree(openephys_file._absolute_foldername, target_folder)
