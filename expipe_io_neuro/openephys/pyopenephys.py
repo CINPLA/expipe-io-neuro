@@ -218,7 +218,7 @@ class File:
         with open(self._set_fname) as f:
             xmldata = f.read()
             self.settings = yh.data(ET.fromstring(xmldata))['SETTINGS']
-        # read date in US formate
+        # read date in US format
         if platform.system() == 'Windows':
             locale.setlocale(locale.LC_ALL, 'english')
         else:

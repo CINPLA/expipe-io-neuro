@@ -18,6 +18,7 @@ from six import exec_
 import locale
 from datetime import datetime
 import time
+import locale
 
 
 def _read_python(path):
@@ -125,7 +126,11 @@ class File:
         # extract date and time, automatically appended at the end of filename
         fname = op.split(filename)[-1]
         under_date = fname[:-4].split('_')[-2:]
-        locale.setlocale(locale.LC_ALL, 'en_US.UTF8')
+        # read date in US format
+        if platform.system() == 'Windows':
+            locale.setlocale(locale.LC_ALL, 'english')
+        else:
+            locale.setlocale(locale.LC_ALL, 'en_US.UTF8')
         self._start_datetime = datetime.strptime(under_date[0]+under_date[1], '%y%m%d%H%M%S')
         self._times = data['t']
         self._duration = self._times[-1] - self._times[0]
