@@ -251,22 +251,20 @@ def find_nearest(array, value, n=1, not_in_idx=None):
 
 def loadSpikes(filepath):
 
-    # doesn't quite work...spikes are transposed in a weird way
-
     # constants for pre-allocating matrices:
     MAX_NUMBER_OF_SPIKES = int(1e6)
     data = { }
-
+    
     f = open(filepath,'rb')
     header = readHeader(f)
-
+    
     if float(header['version']) < 0.4:
         raise Exception('Loader is only compatible with .spikes files with version 0.4 or higher')
-
-    data['header'] = header
+     
+    data['header'] = header 
     numChannels = int(header['num_channels'])
     numSamples = 40 # **NOT CURRENTLY WRITTEN TO HEADER**
-
+    
     spikes = np.zeros((MAX_NUMBER_OF_SPIKES, numSamples, numChannels))
     timestamps = np.zeros(MAX_NUMBER_OF_SPIKES)
     source = np.zeros(MAX_NUMBER_OF_SPIKES)
@@ -274,13 +272,13 @@ def loadSpikes(filepath):
     thresh = np.zeros((MAX_NUMBER_OF_SPIKES, numChannels))
     sortedId = np.zeros((MAX_NUMBER_OF_SPIKES, numChannels))
     recNum = np.zeros(MAX_NUMBER_OF_SPIKES)
-
+    
     currentSpike = 0
-
+    
     while f.tell() < os.fstat(f.fileno()).st_size:
-
-        timestamps[currentSpike] = np.fromfile(f, np.dtype('<i8'), 1)
+        
         eventType = np.fromfile(f, np.dtype('<u1'), 1) #always equal to 4, discard
+        timestamps[currentSpike] = np.fromfile(f, np.dtype('<i8'), 1)
         software_timestamp = np.fromfile(f, np.dtype('<i8'), 1)
         source[currentSpike] = np.fromfile(f, np.dtype('<u2'), 1)
         numChannels = int(np.fromfile(f, np.dtype('<u2'), 1))
@@ -291,22 +289,21 @@ def loadSpikes(filepath):
         color = np.fromfile(f, np.dtype('<u1'), 3)
         pcProj = np.fromfile(f, np.float32, 2)
         sampleFreq = np.fromfile(f, np.dtype('<u2'), 1)
-
+        
         waveforms = np.fromfile(f, np.dtype('<u2'), numChannels * numSamples)
-        wv = np.reshape(waveforms, (numSamples, numChannels))
+        wv = np.reshape(waveforms, (numChannels, numSamples)).T
 
         gain[currentSpike, :] = np.fromfile(f, np.float32, numChannels)
         thresh[currentSpike, :] = np.fromfile(f, np.dtype('<u2'), numChannels)
-
+        
         recNum[currentSpike] = np.fromfile(f, np.dtype('<u2'), 1)
-
-        #print wv.shape
-
+        
         for ch in range(numChannels):
-            spikes[currentSpike, :, ch] = (np.float64(wv[:,ch])-32768)/(gain[currentSpike,ch]/1000)
-
+            spikes[currentSpike, :, ch] = ((np.float64(wv[:, ch]) - 32768) /
+                                           (gain[currentSpike, ch] / 1000))
+        
         currentSpike += 1
-
+        
     data['spikes'] = spikes[:currentSpike, :, :]
     data['timestamps'] = timestamps[:currentSpike]
     data['source'] = source[:currentSpike]

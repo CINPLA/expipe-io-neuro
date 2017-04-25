@@ -23,16 +23,14 @@ import quantities as pq
 import os
 import os.path as op
 import numpy as np
-import xml.etree.ElementTree as ET
-from xmljson import yahoo as yh
 from datetime import datetime
 import locale
 import struct
 import platform
 from .tools import (_read_python, _cut_to_same_len, _zeros_to_nan, clip_anas,
-                   readHeader, loadSpikes, clip_digs, clip_times,
-                   clip_tracking, find_nearest, get_number_of_records,
-                   read_analog_continuous_signal, read_analog_binary_signals)
+                    readHeader, loadSpikes, clip_digs, clip_times,
+                    clip_tracking, find_nearest, get_number_of_records,
+                    read_analog_continuous_signal, read_analog_binary_signals)
 
 # TODO related files
 # TODO append .continuous files directly to file and memory map in the end
@@ -111,15 +109,16 @@ class SpikeTrain:
     def __init__(self, times, waveforms,
                  spike_count, channel_count, samples_per_spike,
                  sample_rate, t_stop, **attrs):
+        assert(waveforms.shape[0] == spike_count), waveforms.shape[0]
+        assert(waveforms.shape[1] == channel_count), waveforms.shape[1]
+        assert(waveforms.shape[2] == samples_per_spike), waveforms.shape[2]
+        assert(len(times) == spike_count)
+        assert times[-1] <= t_stop, ('Spike time {}'.format(times[-1]) +
+                                     ' exceeds duration {}'.format(t_stop))
         self.times = times
         self.waveforms = waveforms
         self.attrs = attrs
         self.t_stop = t_stop
-
-        assert(self.waveforms.shape[0] == spike_count)
-        assert(self.waveforms.shape[1] == channel_count)
-        assert(self.waveforms.shape[2] == samples_per_spike)
-        assert(times[-1] <= self.t_stop)
 
         self.spike_count = spike_count
         self.channel_count = channel_count
@@ -176,6 +175,8 @@ class File:
     Class for reading experimental data from an OpenEphys dataset.
     """
     def __init__(self, foldername, probefile=None):
+        import xml.etree.ElementTree as ET
+        from xmljson import yahoo as yh
         # TODO assert probefile is a probefile
         # TODO add default prb map and allow to add it later
         self._absolute_foldername = foldername
@@ -642,21 +643,26 @@ class File:
                     wf = data['spikes'][clusters == cluster]
                     wf = wf.swapaxes(1, 2)
                     sample_rate = int(data['header']['sampleRate'])
-                    times = data['timestamps'][clusters == cluster] / sample_rate / 1000
+                    times = data['timestamps'][clusters == cluster] / sample_rate
+                    t_stop = self.duration.rescale('s')
+                    mask = times <= t_stop
+                    if not all(mask):
+                        print('Deleted {}'.format(sum(~mask)) +
+                              ' spiketimes larger recording duration')
                     self._spiketrains.append(
                         SpikeTrain(
-                            times=times * pq.s,
-                            waveforms=wf * pq.uV,
-                            spike_count=sum(clusters == cluster),
+                            times=times[mask] * pq.s,
+                            waveforms=wf[mask, :, :] * pq.uV,
+                            spike_count=sum(mask),
                             channel_count=int(data['header']['num_channels']),
                             sample_rate=sample_rate * pq.Hz,
                             channel_group_id=group_id,
-                            samples_per_spike=40, # TODO read this from file
+                            samples_per_spike=40,  # TODO read this from file
                             gain=data['gain'][clusters == cluster],
                             threshold=data['thresh'][clusters == cluster],
                             name='Unit #{}'.format(cluster),
                             cluster_id=int(cluster),
-                            t_stop=self.duration.rescale('s')
+                            t_stop=t_stop
                         )
                     )
 

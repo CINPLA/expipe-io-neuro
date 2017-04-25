@@ -189,18 +189,3 @@ class OpenEphysFilerecord(Filerecord):
 
     def generate_inp(self, openephys_file):
         generate_inp(self.local_path, openephys_file)
-
-
-if __name__ == '__main__':
-    openephys_directory = '/home/mikkel/Ephys/1715_2017-04-23_12-31-07_01'
-    exdir_path = 'nada.exdir'
-    probefile = '/home/mikkel/.config/expipe/tetrodes32ch-klusta-oe.prb'
-    openephys_file = pyopenephys.File(openephys_directory, probefile)
-    # if op.exists(exdir_path):
-    #     shutil.rmtree(exdir_path)
-    # convert(openephys_directory=openephys_file,
-    #         exdir_path=exdir_path)
-    # generate_tracking(exdir_path, openephys_file)
-    # generate_lfp(exdir_path, openephys_file)
-    generate_spike_trains(exdir_path, openephys_file, source='openephys')
-    # generate_inp(exdir_path)

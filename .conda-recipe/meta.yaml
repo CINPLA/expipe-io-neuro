@@ -13,7 +13,6 @@ requirements:
         - numpy
         - scipy
         - quantities
-        - xmljson
     run:
         - python
         - setuptools
@@ -21,7 +20,6 @@ requirements:
         - numpy
         - scipy
         - quantities
-        - xmljson
 test:
   imports:
       - expipe_io_neuro
