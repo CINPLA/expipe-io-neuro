@@ -1,3 +1,4 @@
+import pyopenephys
 import exdir
 import shutil
 import glob
@@ -48,15 +49,15 @@ def _prepare_channel_groups(exdir_path, openephys_file):
     elphys = processing.require_group('electrophysiology')
     for openephys_channel_group in openephys_file.channel_groups:
         exdir_channel_group = elphys.require_group(
-            "channel_group_{}".format(openephys_channel_group.channel_group_id))
+            "channel_group_{}".format(openephys_channel_group.id))
         exdir_channel_groups.append(exdir_channel_group)
         channel_identities = np.array([ch.index for ch in openephys_channel_group.channels])
         exdir_channel_group.attrs['start_time'] = 0 * pq.s
         exdir_channel_group.attrs['stop_time'] = openephys_file.duration
         exdir_channel_group.attrs["electrode_identities"] = channel_identities
         exdir_channel_group.attrs["electrode_idx"] = channel_identities - channel_identities[0]
-        exdir_channel_group.attrs['electrode_group_id'] = openephys_channel_group.channel_group_id
-        # TODO else: test if attrs are the same
+        exdir_channel_group.attrs['electrode_group_id'] = openephys_channel_group.id
+        # TODO else=test if attrs are the same
     return exdir_channel_groups
 
 
@@ -67,7 +68,7 @@ def generate_lfp(exdir_path, openephys_file):
     for channel_group, openephys_channel_group in zip(exdir_channel_groups,
                                                       openephys_file.channel_groups):
         lfp = channel_group.require_group("LFP")
-        group_id = openephys_channel_group.channel_group_id
+        group_id = openephys_channel_group.id
         print('Generating LFP, channel group ', group_id)
         for channel in openephys_channel_group.channels:
                 lfp_timeseries = lfp.require_group(
@@ -90,7 +91,7 @@ def generate_lfp(exdir_path, openephys_file):
                 lfp_timeseries.attrs["stop_time"] = t_stop
                 lfp_timeseries.attrs["sample_rate"] = sample_rate
                 lfp_timeseries.attrs["electrode_identity"] = analog_signal.channel_id
-                lfp_timeseries.attrs["electrode_idx"] = analog_signal.channel_id - openephys_channel_group.channel_group_id * 4
+                lfp_timeseries.attrs["electrode_idx"] = analog_signal.channel_id - openephys_channel_group.id * 4
                 lfp_timeseries.attrs['electrode_group_id'] = group_id
                 data = lfp_timeseries.require_dataset("data", data=signal)
                 data.attrs["num_samples"] = len(signal)
@@ -117,12 +118,32 @@ def generate_spike_trains(exdir_path, openephys_file, source='klusta'):
         else:
             print('.kwik file is not in exdir folder')
     elif source == 'openephys':
-        exdir_channel_groups = _prepare_channel_groups(exdir_path, openephys_file)
-        for channel_group, openephys_channel_group in zip(exdir_channel_groups,
-                                                          openephys_file.channel_groups):
-            group_id = openephys_channel_group.channel_group_id
-            print('Loading spikes from, channel group ', group_id)
-            # print(channel_group.spiketains)
+        blk = neo.Block()
+        for oe_group in openephys_file.channel_groups:
+            channel_ids = [ch.id for ch in oe_group.channels]
+            channel_index = [ch.index for ch in oe_group.channels]
+            chx = neo.ChannelIndex(name='channel group {}'.format(oe_group.id),
+                                   channel_ids=channel_ids,
+                                   index=channel_index,
+                                   group_id=oe_group.id)
+            for sptr in oe_group.spiketrains:
+                unit = neo.Unit(cluster_group='unsorted',
+                                cluster_id=sptr.attrs['cluster_id'],
+                                name=sptr.attrs['cluster_id'])
+                unit.spiketrains.append(
+                    neo.SpikeTrain(
+                        times=sptr.times,
+                        waveforms=sptr.waveforms,
+                        sampling_rate=sptr.sample_rate,
+                        units='s',
+                        **sptr.attrs
+                    )
+                )
+                chx.units.append(unit)
+            blk.channel_indexes.append(chx)
+
+        exdirio = neo.io.ExdirIO(exdir_path)
+        exdirio.write_block(blk)
     else:
         raise ValueError(source + ' not supported')
 
@@ -170,7 +191,7 @@ class OpenEphysFilerecord(Filerecord):
 
 
 if __name__ == '__main__':
-    openephys_directory = '/home/mikkel/Ephys/1715_2017-04-23_12-31-07_01'
+    openephys_directory = '/home/mikkel/Ephys/1704_2017-04-19_19-05-04_01'
     exdir_path = 'nada'
     probefile = '/home/mikkel/.config/expipe/tetrodes32ch-klusta-oe.prb'
     openephys_file = pyopenephys.File(openephys_directory, probefile)

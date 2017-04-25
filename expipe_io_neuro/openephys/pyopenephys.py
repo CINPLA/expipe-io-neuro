@@ -29,7 +29,7 @@ from datetime import datetime
 import locale
 import struct
 import platform
-from .tools import (_read_python, _cut_to_same_len, _zeros_to_nan, clip_anas,
+from tools import (_read_python, _cut_to_same_len, _zeros_to_nan, clip_anas,
                    readHeader, loadSpikes, clip_digs, clip_times,
                    clip_tracking, find_nearest, get_number_of_records,
                    read_analog_continuous_signal, read_analog_binary_signals)
@@ -49,19 +49,6 @@ class Channel:
         self.id = channel_id
         self.name = name
         self.gain = gain
-
-
-class ChannelGroup:
-    def __init__(self, channel_group_id, filename, channels, attrs):
-        self.attrs = attrs
-        self.filename = filename
-        self.channel_group_id = channel_group_id
-        self.channels = channels
-
-    def __str__(self):
-        return "<OpenEphys channel_group {}: channel_count: {}>".format(
-            self.channel_group_id, len(self.channels)
-        )
 
 
 class AnalogSignal:
@@ -140,16 +127,46 @@ class SpikeTrain:
     @property
     def num_spikes(self):
         """
-        Alias for spike_count, using same name as in .[0-9]* file.
+        Alias for spike_count.
         """
         return self.spike_count
 
     @property
     def num_chans(self):
         """
-        Alias for channel_count, using same name as in .[0-9]* file.
+        Alias for channel_count.
         """
         return self.channel_count
+
+
+class ChannelGroup:
+    def __init__(self, channel_group_id, filename, channels,
+                 fileclass=None, **attrs):
+        self.attrs = attrs
+        self.filename = filename
+        self.id = channel_group_id
+        self.channels = channels
+        self.fileclass = fileclass
+
+    def __str__(self):
+        return "<OpenEphys channel_group {}: channel_count: {}>".format(
+            self.id, len(self.channels)
+        )
+
+    @property
+    def analog_signals(self):
+        ana = self.fileclass.analog_signals[0]
+        analog_signals = []
+        for channel in self.channels:
+            analog_signals.append(AnalogSignal(signal=ana.signal[channel.id],
+                                               channel_id=channel.id,
+                                               sample_rate=ana.sample_rate))
+        return analog_signals
+
+    @property
+    def spiketrains(self):
+        return [sptr for sptr in self.fileclass.spiketrains
+                if sptr.attrs['channel_group_id'] == self.id]
 
 
 class File:
@@ -188,9 +205,6 @@ class File:
                                 8., 10., 12.5, 15., 20., 25., 30.])
         self.osc = False
         self.oscInfo = []
-        # self.oscID = []
-        # self.oscPort = []
-        # self.oscAddress = []
         self.tracking_timesamples_rate = 1000 * 1000. * pq.Hz
 
         self.sync = False
@@ -342,7 +356,7 @@ class File:
             self._read_analog_signals()
 
         return self._analog_signals
-        
+
     @property
     def spiketrains(self):
         if self._spiketrains_dirty:
@@ -425,20 +439,11 @@ class File:
                 channel_group_id=channel_group_id,
                 filename=None,#TODO,
                 channels=channels,
+                fileclass=self,
                 attrs=None #TODO
             )
-            ana = self.analog_signals[0]
-            analog_signals = []
-            for channel in channels:
-                analog_signals.append(AnalogSignal(signal=ana.signal[channel.id],
-                                                   channel_id=channel.id,
-                                                   sample_rate=ana.sample_rate))
 
-            channel_group.analog_signals = analog_signals
-            
-            channel_group.spiketrains = [sptr for sptr in self.spiketrains
-                                        if sptr.attrs['channel_group_id'] == channel_group_id]
-            
+
             self._channel_groups.append(channel_group)
             self._channel_group_id_to_channel_group[channel_group_id] = channel_group
 
@@ -626,9 +631,11 @@ class File:
             if len(filenames) == 0:
                 return
             for fname in filenames:
+                print('Loading spikes from, ', fname.split('.')[0])
                 data = loadSpikes(op.join(self._absolute_foldername, fname))
                 clusters = data['recordingNumber']
                 group_id = int(np.unique(data['source']))
+                assert 'TT{}'.format(group_id) in fname
                 for cluster in np.unique(clusters):
                     wf = data['spikes'][clusters == cluster]
                     wf = wf.swapaxes(1, 2)
@@ -642,6 +649,8 @@ class File:
                         samples_per_spike=40, # TODO read this from file
                         gain=data['gain'][clusters == cluster],
                         threshold=data['thresh'][clusters == cluster],
+                        name='cluster #{}'.format(cluster),
+                        cluster_id=cluster
                     ))
 
         self._spiketrains_dirty = False
