@@ -19,6 +19,7 @@ import locale
 from datetime import datetime
 import time
 import locale
+import platform
 
 
 def _read_python(path):
