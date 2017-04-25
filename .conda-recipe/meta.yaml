@@ -13,6 +13,7 @@ requirements:
         - numpy
         - scipy
         - quantities
+        - exdir
     run:
         - python
         - setuptools
@@ -20,6 +21,7 @@ requirements:
         - numpy
         - scipy
         - quantities
+        - exdir
 test:
   imports:
       - expipe_io_neuro
