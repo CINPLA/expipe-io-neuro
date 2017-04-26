@@ -7,13 +7,10 @@ build:
     script: python setup.py install
 requirements:
     build:
+        - future
         - python
         - setuptools
         - pip
-        - numpy
-        - scipy
-        - quantities
-        - exdir
     run:
         - python
         - setuptools
@@ -22,6 +19,7 @@ requirements:
         - scipy
         - quantities
         - exdir
+        - expipe
 test:
   imports:
       - expipe_io_neuro
