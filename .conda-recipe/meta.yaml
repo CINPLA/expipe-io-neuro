@@ -12,6 +12,7 @@ requirements:
         - setuptools
         - pip
     run:
+        - future
         - python
         - setuptools
         - pip
@@ -20,6 +21,7 @@ requirements:
         - quantities
         - exdir
         - pyxona
+        - six
         # - expipe
 test:
   imports:
