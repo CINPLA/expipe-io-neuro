@@ -5,9 +5,9 @@ import os
 import quantities as pq
 import numpy as np
 
-from expipe.io.core import Filerecord
-from expipe.io.core import user
-from expipe import settings
+# from expipe.io.core import Filerecord
+# from expipe.io.core import user
+# from expipe import settings
 import os.path as op
 
 # TODO inform database about intan data being included

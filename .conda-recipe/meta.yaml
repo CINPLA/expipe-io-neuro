@@ -19,7 +19,7 @@ requirements:
         - scipy
         - quantities
         - exdir
-        - expipe
+        # - expipe
 test:
   imports:
       - expipe_io_neuro
@@ -29,6 +29,3 @@ about:
     license: GNU GPLv3
     license_family: GPL
     license_file: LICENSE
-extra:
-    recipe-maintainers:
-        - dragly

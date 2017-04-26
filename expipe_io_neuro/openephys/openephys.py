@@ -5,9 +5,9 @@ import os
 import quantities as pq
 import numpy as np
 
-from expipe.io.core import Filerecord
-from expipe.io.core import user
-from expipe import settings
+# from expipe.io.core import Filerecord
+# from expipe.io.core import user
+# from expipe import settings
 import os.path as op
 
 # TODO inform database about openephys data being included
@@ -101,7 +101,7 @@ def generate_lfp(exdir_path, openephys_file):
 
 def generate_spike_trains(exdir_path, openephys_file, source='klusta'):
     import neo
-    if source == 'klusta':
+    if source == 'klusta': # TODO acquire features and masks
         print('Generating spike trains from KWIK file')
         exdir_file = exdir.File(exdir_path)
         acquisition = exdir_file["acquisition"]
@@ -171,22 +171,22 @@ def generate_tracking(exdir_path, openephys_file):
         led.attrs['stop_time'] = openephys_file.duration
 
 
-class OpenEphysFilerecord(Filerecord):
-    def __init__(self, action, filerecord_id=None):
-        super().__init__(action, filerecord_id)
-
-    def import_file(self, openephys_file):
-        convert(openephys_file=openephys_file,
-                exdir_path=self.local_path)
-
-    def generate_tracking(self, openephys_file):
-        generate_tracking(self.local_path, openephys_file)
-
-    def generate_lfp(self, openephys_file):
-        generate_analog_signals(self.local_path, openephys_file)
-
-    def generate_spike_trains(self, openephys_file):
-        generate_spike_trains(self.local_path, openephys_file)
-
-    def generate_inp(self, openephys_file):
-        generate_inp(self.local_path, openephys_file)
+# class OpenEphysFilerecord(Filerecord):
+#     def __init__(self, action, filerecord_id=None):
+#         super().__init__(action, filerecord_id)
+#
+#     def import_file(self, openephys_file):
+#         convert(openephys_file=openephys_file,
+#                 exdir_path=self.local_path)
+#
+#     def generate_tracking(self, openephys_file):
+#         generate_tracking(self.local_path, openephys_file)
+#
+#     def generate_lfp(self, openephys_file):
+#         generate_analog_signals(self.local_path, openephys_file)
+#
+#     def generate_spike_trains(self, openephys_file):
+#         generate_spike_trains(self.local_path, openephys_file)
+#
+#     def generate_inp(self, openephys_file):
+#         generate_inp(self.local_path, openephys_file)
