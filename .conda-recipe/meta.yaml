@@ -19,6 +19,7 @@ requirements:
         - scipy
         - quantities
         - exdir
+        - pyxona
         # - expipe
 test:
   imports:
