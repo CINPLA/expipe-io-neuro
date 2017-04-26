@@ -7,6 +7,10 @@ install:
   - source libs/travis-conda-scripts/scripts/config.sh
   - bash -ex libs/travis-conda-scripts/scripts/travis_install.sh
 script:
+  - source libs/travis-conda-scripts/scripts/config.sh
+  - mkdir -p ~/.config/expipe
+  - echo $EXPIPE_CONFIG > ~/.config/expipe/config.yaml
+  - cp ~/.config/expipe/config.yaml ~/.config/expipe/test-config.yaml
   - bash -ex libs/travis-conda-scripts/scripts/build.sh
 deploy:
   - provider: script
