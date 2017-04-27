@@ -7,14 +7,12 @@ build:
     script: python setup.py install
 requirements:
     build:
+        - future
         - python
         - setuptools
         - pip
-        - numpy
-        - scipy
-        - quantities
-        - exdir
     run:
+        - future
         - python
         - setuptools
         - pip
@@ -22,6 +20,9 @@ requirements:
         - scipy
         - quantities
         - exdir
+        - pyxona
+        - six
+        # - expipe
 test:
   imports:
       - expipe_io_neuro
@@ -31,6 +32,3 @@ about:
     license: GNU GPLv3
     license_family: GPL
     license_file: LICENSE
-extra:
-    recipe-maintainers:
-        - dragly

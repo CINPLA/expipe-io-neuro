@@ -6,9 +6,9 @@ import os
 import quantities as pq
 import numpy as np
 
-from expipe.io.core import Filerecord
-from expipe.io.core import user
-from expipe import settings
+# from expipe.io.core import Filerecord
+# from expipe.io.core import user
+# from expipe import settings
 
 # TODO inform database about axona data being included
 # TODO avoid overwriting existing data!
@@ -250,27 +250,27 @@ def generate_inp(exdir_path):
     vals.attrs['num_samples'] = len(vals[:])
 
 
-class AxonaFilerecord(Filerecord):
-    def __init__(self, action, filerecord_id=None):
-        super().__init__(action, filerecord_id)
-
-    def import_file(self, axona_setfile):
-        convert(axona_filename=axona_setfile, exdir_path=os.path.join(settings["data_path"], self.local_path))
-
-    def generate_tracking(self):
-        generate_tracking(self.local_path)
-
-    def generate_analog_signals(self):
-        generate_analog_signals(self.local_path)
-
-    def generate_spike_trains(self):
-        generate_spike_trains(self.local_path)
-
-    def generate_inp(self):
-        generate_inp(self.local_path)
-
-    def generate_units(self):
-        generate_units(self.local_path)
-
-    def generate_clusters(self):
-        generate_clusters(self.local_path)
+# class AxonaFilerecord(Filerecord):
+#     def __init__(self, action, filerecord_id=None):
+#         super().__init__(action, filerecord_id)
+#
+#     def import_file(self, axona_setfile):
+#         convert(axona_filename=axona_setfile, exdir_path=os.path.join(settings["data_path"], self.local_path))
+#
+#     def generate_tracking(self):
+#         generate_tracking(self.local_path)
+#
+#     def generate_analog_signals(self):
+#         generate_analog_signals(self.local_path)
+#
+#     def generate_spike_trains(self):
+#         generate_spike_trains(self.local_path)
+#
+#     def generate_inp(self):
+#         generate_inp(self.local_path)
+#
+#     def generate_units(self):
+#         generate_units(self.local_path)
+#
+#     def generate_clusters(self):
+#         generate_clusters(self.local_path)
