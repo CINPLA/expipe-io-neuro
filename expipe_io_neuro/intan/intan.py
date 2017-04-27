@@ -128,6 +128,7 @@ def generate_spike_trains(exdir_path):
             blk = kwikio.read_block()
             exdirio = neo.io.ExdirIO(exdir_path)
             exdirio.write_block(blk)
+        print('Spikes copied to: ', kwikfile)
     else:
         print('.kwik file is not in exdir folder')
 
