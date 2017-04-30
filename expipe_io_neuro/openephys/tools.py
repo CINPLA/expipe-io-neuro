@@ -194,7 +194,10 @@ def clip_tracking(tracking, clipping_times, start_end):
             raise AttributeError('clipping_times must be of length 1 or 2')
 
         track_clip.append(np.array([led[idx[0]] for led in tr]))
-        times = tracking.times[i][idx[0]] - clipping_times[0]
+        if start_end != 'end':
+            times = tracking.times[i][idx[0]] - clipping_times[0]
+        else:
+            times = tracking.times[i][idx[0]]
         t_clip.append(times)
 
     return track_clip, t_clip
