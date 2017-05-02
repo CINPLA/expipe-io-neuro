@@ -691,10 +691,10 @@ class File:
 
                 read_data = []
                 while True:
-                    bytes = fh.read(struct_len)
-                    if not bytes:
+                    byte = fh.read(struct_len)
+                    if not byte:
                         break
-                    s = struct_unpack(bytes)
+                    s = struct_unpack(byte)
                     read_data.append(s)
                     nread += 1
 
@@ -702,64 +702,42 @@ class File:
 
                 timestamps, sampleNum, eventType, nodeId, eventId, channel, recordingNumber = zip(*read_data)
 
-                timestamps = np.array(timestamps)
-                sampleNum = np.array(sampleNum)
-                nodeId = np.array(nodeId)
-                eventType = np.array(eventType)
-                eventId = np.array(eventId)
-                channel = np.array(channel)
-                recordingNumber = np.array(recordingNumber)
-
-                data['channel'] = channel
-                data['timestamps'] = timestamps
-                data['eventType'] = eventType
-                data['nodeId'] = nodeId
-                data['eventId'] = eventId
-                data['recordingNumber'] = recordingNumber
-                data['sampleNum'] = sampleNum
+                data['channel'] = np.array(channel)
+                data['timestamps'] = np.array(timestamps)
+                data['eventType'] = np.array(eventType)
+                data['nodeId'] = np.array(nodeId)
+                data['eventId'] = np.array(eventId)
+                data['recordingNumber'] = np.array(recordingNumber)
+                data['sampleNum'] = np.array(sampleNum)
 
                 # TODO: check if data is null (data['event...'] is null?
                 # Consider only TTL from FPGA (for now)
+                num_channels = 8
+                self._digital_signals = None
                 if self.rhythm:
                     if len(data['timestamps']) != 0:
-                        idxttl_fpga = np.where((data['eventType'] == 3) & (data['nodeId'] == int(self.rhythmID)))
-                        digchan = []
-                        digs = []
+                        idxttl_fpga = np.where((data['eventType'] == 3) &
+                                               (data['nodeId'] == int(self.rhythmID)))
+                        digs = [list() for i in range(num_channels)]
                         if len(idxttl_fpga[0]) != 0:
                             print('TTLevents: ', len(idxttl_fpga[0]))
                             digchan = np.unique(data['channel'][idxttl_fpga])
-                            if len(digchan) == 1:
-                                # Single digital input
-                                digs = data['timestamps'][idxttl_fpga]
+                            print('Used IO channels ', digchan)
+                            for chan in digchan:
+                                idx_chan = np.where(data['channel'] == chan)
+                                dig = data['timestamps'][idx_chan]
                                 # Consider rising edge only
-                                digs = digs[::2]
-                                # remove start_time (offset) and transform in seconds
-                                digs -= data['timestamps'][0]
-                                digs = digs.astype(dtype='float')/self.sample_rate
-                                digs = np.array([digs]) * pq.s
-                            else:
-                                for chan in digchan:
-                                    idx_chan = np.where(data['channel'] == chan)
-                                    new_dig = data['timestamps'][idx_chan]
-                                    # Consider rising edge only
-                                    new_dig = new_dig[::2]
-                                    new_dig -= data['timestamps'][0]
-                                    new_dig = new_dig.astype(dtype='float')/self.sample_rate
-                                    digs.append(new_dig)
-                                digs = np.array(digs * pq.s)
+                                dig = dig[::2]
+                                # new_dig -= data['timestamps'][0]
+                                dig = dig.astype('float') / self.sample_rate
+                                digs[chan] = dig * pq.s
 
                         self._digital_signals = [DigitalSignal(
-                            channel_id=digchan,
+                            channel_id=list(range(num_channels)),
                             times=digs,
                             sample_rate=self.sample_rate
                         )]
-                    else:
-                        self._digital_signals = [DigitalSignal(
-                            channel_id=np.array([]),
-                            times=np.array([]),
-                            sample_rate=[]
-                        )]
-                else:
+                if self._digital_signals is None:
                     self._digital_signals = [DigitalSignal(
                         channel_id=np.array([]),
                         times=np.array([]),

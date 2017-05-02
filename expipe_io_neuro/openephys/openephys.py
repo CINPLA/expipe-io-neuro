@@ -150,7 +150,7 @@ def generate_spike_trains(exdir_path, openephys_file, source='klusta'):
         raise ValueError(source + ' not supported')
 
 
-def generate_tracking(exdir_path, openephys_file):
+def generate_tracking(exdir_path, openephys_file, ttl_channel=0):
     exdir_file = exdir.File(exdir_path)
     general, subject, processing, epochs = _prepare_exdir_file(exdir_file)
     tracking = processing.require_group('tracking')
@@ -160,9 +160,14 @@ def generate_tracking(exdir_path, openephys_file):
     position.attrs['start_time'] = 0 * pq.s
     position.attrs['stop_time'] = openephys_file.duration
     tracking_data = openephys_file.tracking[0]
-    openephys_file.sync_tracking_from_events(
-        openephys_file.digital_in_signals[0].times[0]
-    )
+    ttl_times = openephys_file.digital_in_signals[0].times[ttl_channel]
+    if len(ttl_times) != 0:
+        openephys_file.sync_tracking_from_events(ttl_times)
+    else:
+        import warnings
+        warnings.warn(
+            'No TTL events was found on IO channel {}'.format(ttl_channel)
+        )
     for n, (times, coords) in enumerate(zip(tracking_data.times,
                                             tracking_data.positions)):
         led = position.require_group("led_" + str(n))
