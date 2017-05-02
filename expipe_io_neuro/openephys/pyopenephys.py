@@ -730,7 +730,7 @@ class File:
                                 dig = dig[::2]
                                 # new_dig -= data['timestamps'][0]
                                 dig = dig.astype('float') / self.sample_rate
-                                digs[chan] = dig * pq.s
+                                digs[chan] = dig.rescale('s')
 
                         self._digital_signals = [DigitalSignal(
                             channel_id=list(range(num_channels)),
@@ -758,7 +758,7 @@ class File:
                                 # remove start_time (offset) and transform in seconds
                                 syncs -= data['timestamps'][0]
                                 syncs = syncs.astype(dtype='float')/self.sample_rate
-                                syncs = np.array([syncs]) * pq.s
+                                syncs = np.array([syncs]) * pq.s # NOTE sample_rate is in Hz so here you will get s/Hz
                             else:
                                 for chan in syncchan:
                                     idx_chan = np.where(data['channel'] == chan)
