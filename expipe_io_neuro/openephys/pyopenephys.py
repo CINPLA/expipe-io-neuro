@@ -189,18 +189,12 @@ class File:
         self._events_dirty = True
         self._times = []
         self._duration = []
+        self.__dict__.update(self._read_messages())
 
         # TODO: support for multiple exp in same folder
         filenames = [f for f in os.listdir(self._absolute_foldername)]
         if not any(sett == 'settings.xml' for sett in filenames):
             raise ValueError("'setting.xml' should be in the folder")
-
-        if not any('.eventsmessages' in f for f in filenames):
-            raise ValueError("'.eventsmessages' should be in the folder")
-        else:
-            messagefile = [f for f in filenames if '.eventsmessages' in f][0]
-            with open(op.join(self._absolute_foldername, messagefile), "r") as fh:
-                self._software_sample_rate, self._start_exp = self._read_software_rate(fh)
 
         self.rhythm = False
         self.rhythmID = []
@@ -406,18 +400,44 @@ class File:
 
         return self._times
 
-    def _read_software_rate(self, fh):
-        spl = fh.readline().split()
-        if any(['Software' in s for s in spl]):
-            stime = spl[-1]
-            stime = stime.split('@')
-            start = stime[0]
-            hz_start = stime[-1].find('Hz')
-            sample_rate = float(stime[-1][:hz_start]) * pq.Hz
-        else:
-            start = sample_rate = []
+    def _read_messages(self):
+        filenames = [f for f in os.listdir(self._absolute_foldername)]
+        if not any('.eventsmessages' in f for f in filenames):
+            raise ValueError("'.eventsmessages' should be in the folder")
 
-        return sample_rate, start
+        messagefile = [f for f in filenames if '.eventsmessages' in f][0]
+        info = {'messages': []}
+        stimes = []
+        with open(op.join(self._absolute_foldername, messagefile), "r") as fh:
+            while True:
+                spl = fh.readline().split()
+                if not spl:
+                    break
+                if 'Software' in spl:
+                    stime = spl[-1]
+                    stime = stime.split('@')
+                    info['_start_exp'] = stime[0]
+                    hz_start = stime[-1].find('Hz')
+                    sr = float(stime[-1][:hz_start]) * pq.Hz
+                    info['_software_sample_rate'] = sr
+                elif 'Processor:' in spl:
+                    stimes.append(int(spl[0]))
+                    sr = spl[-1].split('@')[-1]
+                    hz_start = sr.find('Hz')
+                    sample_rate = float(sr[:hz_start]) * pq.Hz
+                    print(sample_rate)
+                    info['start_timestamp'] = int(spl[0])
+                else:
+                    message = {'time': int(spl[0]),
+                               'message': ' '.join(spl[1:])}
+                    info['messages'].append(message)
+        if any(np.diff(np.array(stimes, dtype=int))):
+            raise ValueError('Found different processor start times')
+        for message in info['messages']:
+            time = (message['time'] - stimes[0]) / sample_rate
+            message['time'] = round(time.rescale('s'), 3)
+
+        return info
 
     def _read_channel_groups(self):
         self._channel_id_to_channel_group = {}
@@ -643,9 +663,9 @@ class File:
                     wf = data['spikes'][clusters == cluster]
                     wf = wf.swapaxes(1, 2)
                     sample_rate = int(data['header']['sampleRate'])
-                    times = data['timestamps'][clusters == cluster] / sample_rate
+                    times = data['timestamps'][clusters == cluster]
+                    times = (times - self.start_timestamp) / sample_rate
                     t_stop = self.duration.rescale('s')
-                    raise NotImplementedError('we need to subtrackt the software start timestamp')
                     self._spiketrains.append(
                         SpikeTrain(
                             times=times * pq.s,
@@ -728,7 +748,7 @@ class File:
                                 dig = data['timestamps'][idx_chan]
                                 # Consider rising edge only
                                 dig = dig[::2]
-                                # new_dig -= data['timestamps'][0]
+                                dig = dig - self.start_timestamp
                                 dig = dig.astype('float') / self.sample_rate
                                 digs[chan] = dig.rescale('s')
 
@@ -756,7 +776,7 @@ class File:
                                 # Single digital input
                                 syncs = data['timestamps'][idxttl_sync]
                                 # remove start_time (offset) and transform in seconds
-                                syncs -= data['timestamps'][0]
+                                syncs -= data['timestamps'][0] # NOTE what if the first timestamp is different from self.start_timestamp
                                 syncs = syncs.astype(dtype='float')/self.sample_rate
                                 syncs = np.array([syncs]) * pq.s # NOTE sample_rate is in Hz so here you will get s/Hz
                             else:
