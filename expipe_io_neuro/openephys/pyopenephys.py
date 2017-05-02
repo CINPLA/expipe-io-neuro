@@ -645,15 +645,12 @@ class File:
                     sample_rate = int(data['header']['sampleRate'])
                     times = data['timestamps'][clusters == cluster] / sample_rate
                     t_stop = self.duration.rescale('s')
-                    mask = times <= t_stop
-                    if not all(mask):
-                        print('Deleted {}'.format(sum(~mask)) +
-                              ' spiketimes larger recording duration')
+                    raise NotImplementedError('we need to subtrackt the software start timestamp')
                     self._spiketrains.append(
                         SpikeTrain(
-                            times=times[mask] * pq.s,
-                            waveforms=wf[mask, :, :] * pq.uV,
-                            spike_count=sum(mask),
+                            times=times * pq.s,
+                            waveforms=wf * pq.uV,
+                            spike_count=len(times),
                             channel_count=int(data['header']['num_channels']),
                             sample_rate=sample_rate * pq.Hz,
                             channel_group_id=group_id,
@@ -839,7 +836,6 @@ class File:
             self._duration = self._times[-1] - self._times[0]
         else:
             print('Empty clipping times list.')
-
 
     def sync_tracking_from_events(self, ttl_events):
         '''

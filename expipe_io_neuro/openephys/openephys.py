@@ -160,6 +160,9 @@ def generate_tracking(exdir_path, openephys_file):
     position.attrs['start_time'] = 0 * pq.s
     position.attrs['stop_time'] = openephys_file.duration
     tracking_data = openephys_file.tracking[0]
+    openephys_file.sync_tracking_from_events(
+        openephys_file.digital_in_signals[0].times[0]
+    )
     for n, (times, coords) in enumerate(zip(tracking_data.times,
                                             tracking_data.positions)):
         led = position.require_group("led_" + str(n))
