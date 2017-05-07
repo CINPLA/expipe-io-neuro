@@ -34,6 +34,20 @@ def _cut_to_same_len(*args):
     return tuple(out)
 
 
+def _start_from_zero_time(time, *args):
+    out = []
+    if not 0.0 in time:
+        raise ValueError('No start time recorded')
+    start, = np.where(time == 0.0)
+    if len(start) > 1:
+        raise ValueError('Multiple starting times recorded')
+    assert not all(np.diff([len(x) for x in args]))
+    assert len(time) == len(args[0])
+    for arg in args:
+        out.append(arg[start:])
+    return time[start:], out
+
+
 def _zeros_to_nan(*args):
     for arg in args:
         arg[arg == 0.0] = np.nan
