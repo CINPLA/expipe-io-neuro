@@ -30,7 +30,8 @@ import platform
 from .tools import (_read_python, _cut_to_same_len, _zeros_to_nan, clip_anas,
                     readHeader, loadSpikes, clip_digs, clip_times,
                     clip_tracking, find_nearest, get_number_of_records,
-                    read_analog_continuous_signal, read_analog_binary_signals)
+                    read_analog_continuous_signal, read_analog_binary_signals,
+                    _start_from_zero_time)
 
 # TODO related files
 # TODO append .continuous files directly to file and memory map in the end
@@ -533,7 +534,7 @@ class File:
             avg_period = np.mean(difft)
             sample_rate_s = 1. / float(avg_period) * pq.Hz
             x, y, ts = _cut_to_same_len(x, y, ts)
-            # t, (x, y) = _start_from_zero_time(t=ts, (x, y))
+            t, (x, y) = _start_from_zero_time(ts, x, y)
             for i, (xx, yy) in enumerate(zip(x, y)):
                 if xx == yy and xx == 0:
                     x[i] = np.nan
@@ -568,6 +569,7 @@ class File:
                 # Camera (0,0) is top left corner -> adjust y
                 # coord_ = np.array([x_, 1-y_])
                 x_, y_, ts_ = _cut_to_same_len(x_, y_, ts_)
+                ts_, (x_, y_) = _start_from_zero_time(ts_, x_, y_)
                 for i, (xx, yy) in enumerate(zip(x_, y_)):
                     if xx == yy and xx == 0:
                         x_[i] = np.nan

@@ -41,8 +41,8 @@ def _start_from_zero_time(time, *args):
     start, = np.where(time == 0.0)
     if len(start) > 1:
         raise ValueError('Multiple starting times recorded')
-    assert not all(np.diff([len(x) for x in args]))
-    assert len(time) == len(args[0])
+    if any(np.diff([len(x) for x in args])) or len(time) != len(args[0]):
+        raise ValueError('All arguments must be of equal length')
     for arg in args:
         out.append(arg[start:])
     return time[start:], out
