@@ -534,7 +534,7 @@ class File:
             avg_period = np.mean(difft)
             sample_rate_s = 1. / float(avg_period) * pq.Hz
             x, y, ts = _cut_to_same_len(x, y, ts)
-            t, (x, y) = _start_from_zero_time(ts, x, y)
+            ts, (x, y) = _start_from_zero_time(ts, x, y)
             for i, (xx, yy) in enumerate(zip(x, y)):
                 if xx == yy and xx == 0:
                     x[i] = np.nan
