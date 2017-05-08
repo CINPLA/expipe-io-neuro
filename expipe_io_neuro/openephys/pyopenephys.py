@@ -569,7 +569,7 @@ class File:
                 # Camera (0,0) is top left corner -> adjust y
                 # coord_ = np.array([x_, 1-y_])
                 x_, y_, ts_ = _cut_to_same_len(x_, y_, ts_)
-                ts_, (x_, y_) = _start_from_zero_time(ts_, x_, y_)
+                # ts_, (x_, y_) = _start_from_zero_time(ts_, x_, y_)
                 for i, (xx, yy) in enumerate(zip(x_, y_)):
                     if xx == yy and xx == 0:
                         x_[i] = np.nan

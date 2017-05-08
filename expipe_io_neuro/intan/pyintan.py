@@ -730,7 +730,7 @@ class File:
                 board_dig_in_data = []
                 for i in range(num_board_dig_in_channels):
                     # find idx of high level
-                    idx_high = np.where(board_dig_in_raw == board_dig_in_channels[i]['native_order'])
+                    idx_high = np.where(board_dig_in_raw == 2**board_dig_in_channels[i]['native_order'])
                     rising, falling = get_rising_falling_edges(idx_high)
                     board_dig_in_data.append(t[rising])
                 board_dig_in_data = np.array(board_dig_in_data) * pq.s
@@ -742,7 +742,7 @@ class File:
                 board_dig_out_data = []
                 for i in range(num_board_dig_out_channels):
                     # find idx of high level
-                    idx_high = np.where(board_dig_out_raw == board_dig_in_channels[i]['native_order'])
+                    idx_high = np.where(board_dig_out_raw == 2**board_dig_in_channels[i]['native_order'])
                     rising, falling = get_rising_falling_edges(idx_high)
                     board_dig_out_data.append(t[rising])
                 board_dig_out_data = np.array(board_dig_out_data) * pq.s
