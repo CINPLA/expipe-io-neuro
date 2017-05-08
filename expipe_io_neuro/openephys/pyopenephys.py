@@ -192,11 +192,6 @@ class File:
         self._duration = []
         self.__dict__.update(self._read_messages())
 
-        # TODO: support for multiple exp in same folder
-        filenames = [f for f in os.listdir(self._absolute_foldername)]
-        if not any(sett == 'settings.xml' for sett in filenames):
-            raise ValueError("'setting.xml' should be in the folder")
-
         self.rhythm = False
         self.rhythmID = []
         rhythmRates = np.array([1., 1.25, 1.5, 2, 2.5, 3, 3.33, 4., 5., 6.25,
@@ -209,7 +204,12 @@ class File:
         self.syncID = []
 
         print('Loading Open-Ephys: reading settings.xml...')
-        self._set_fname = op.join(self._absolute_foldername, 'settings.xml')
+        set_fname = [fname for fname in os.listdir(self._absolute_foldername)
+                     if fname.startswith('settings') and fname.endswith('.xml')]
+        if not len(set_fname) == 1:
+            raise IOError('Unique settings file not found')
+
+        self._set_fname = op.join(self._absolute_foldername, set_fname[0])
         with open(self._set_fname) as f:
             xmldata = f.read()
             self.settings = yh.data(ET.fromstring(xmldata))['SETTINGS']

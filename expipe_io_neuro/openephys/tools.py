@@ -36,9 +36,10 @@ def _cut_to_same_len(*args):
 
 def _start_from_zero_time(time, *args):
     out = []
-    if not 0.0 in time:
-        raise ValueError('No start time recorded')
-    start, = np.where(time == 0.0)
+    if not min(time) < 1 * pq.s:
+        raise ValueError('No start time less than 1 s recorded, ' +
+                         'min time = {}'.format(min(time)))
+    start, = np.where(time == min(time))
     if len(start) > 1:
         raise ValueError('Multiple starting times recorded')
     if any(np.diff([len(x) for x in args])) or len(time) != len(args[0]):
