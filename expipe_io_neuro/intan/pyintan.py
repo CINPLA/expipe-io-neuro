@@ -138,8 +138,10 @@ class File:
         self._sample_rate = data['frequency_parameters']['amplifier_sample_rate']
 
         # apply probe channel mapping
+        # TODO multiple ports -> append channel index
         recorded_channels = sorted([data['amplifier_channels'][ch]['chip_channel']
                                                    for ch in np.arange(len(data['amplifier_channels']))])
+        print('Recorded channels: ', recorded_channels)
         self._channel_info['channels'] = recorded_channels
         if probefile is not None:
             self._probefile_ch_mapping = _read_python(probefile)['channel_groups']
