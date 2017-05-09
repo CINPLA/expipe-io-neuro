@@ -417,11 +417,11 @@ class File:
                 if 'Software' in spl:
                     stime = spl[-1]
                     stime = stime.split('@')
-                    info['start_timestamp'] = stime[0]
+                    info['start_timestamp'] = int(stime[0])
                     hz_start = stime[-1].find('Hz')
                     sr = float(stime[-1][:hz_start]) * pq.Hz
                     info['_software_sample_rate'] = sr
-                elif 'Processor:' in spl: # NOTE assuming that the processor is always written after Software
+                elif 'Processor:' in spl:
                     stimes.append(int(spl[0]))
                     sr = spl[-1].split('@')[-1]
                     hz_start = sr.find('Hz')
@@ -569,7 +569,7 @@ class File:
                 # Camera (0,0) is top left corner -> adjust y
                 # coord_ = np.array([x_, 1-y_])
                 x_, y_, ts_ = _cut_to_same_len(x_, y_, ts_)
-                ts_, (x_, y_) = _start_from_zero_time(ts_, x_, y_)
+                # ts_, (x_, y_) = _start_from_zero_time(ts_, x_, y_)
                 for i, (xx, yy) in enumerate(zip(x_, y_)):
                     if xx == yy and xx == 0:
                         x_[i] = np.nan
