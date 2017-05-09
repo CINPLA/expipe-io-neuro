@@ -775,22 +775,23 @@ class File:
                         if len(idxttl_sync[0]) != 0:
                             print('TTL Sync events: ', len(idxttl_sync[0]))
                             syncchan = np.unique(data['channel'][idxttl_sync])
+                            # TODO this should be reduced to a single loop
                             if len(syncchan) == 1:
                                 # Single digital input
                                 syncs = data['timestamps'][idxttl_sync]
                                 # remove start_time (offset) and transform in seconds
-                                syncs -= data['timestamps'][0] # NOTE what if the first timestamp is different from self.start_timestamp
-                                syncs = syncs.astype(dtype='float')/self.sample_rate
-                                syncs = np.array([syncs]) * pq.s # NOTE sample_rate is in Hz so here you will get s/Hz
+                                syncs = syncs - self.start_timestamp
+                                syncs = syncs.astype(dtype='float') / self.sample_rate
+                                syncs = np.array([syncs])
                             else:
                                 for chan in syncchan:
                                     idx_chan = np.where(data['channel'] == chan)
                                     new_sync = data['timestamps'][idx_chan]
 
-                                    new_sync -= data['timestamps'][0]
-                                    new_sync = new_sync.astype(dtype='float')/self.sample_rate
+                                    new_sync = new_sync - self.start_timestamp
+                                    new_sync = new_sync.astype(dtype='float') / self.sample_rate
                                     syncs.append(new_sync)
-                                syncs = np.array(syncs * pq.s)
+                                syncs = np.array(syncs)
 
                         self._sync_signals = [Sync(
                             channel_id=syncchan,

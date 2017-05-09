@@ -36,6 +36,7 @@ def _cut_to_same_len(*args):
 
 def _start_from_zero_time(time, *args):
     out = []
+    print('Tracking starts at {}'.format(min(time)))
     if not min(time) < 1 * pq.s:
         raise ValueError('No start time less than 1 s recorded, ' +
                          'min time = {}'.format(min(time)))
