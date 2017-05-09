@@ -417,11 +417,11 @@ class File:
                 if 'Software' in spl:
                     stime = spl[-1]
                     stime = stime.split('@')
-                    info['_start_exp'] = stime[0]
+                    info['start_timestamp'] = stime[0]
                     hz_start = stime[-1].find('Hz')
                     sr = float(stime[-1][:hz_start]) * pq.Hz
                     info['_software_sample_rate'] = sr
-                elif 'Processor:' in spl:
+                elif 'Processor:' in spl: # NOTE assuming that the processor is always written after Software
                     stimes.append(int(spl[0]))
                     sr = spl[-1].split('@')[-1]
                     hz_start = sr.find('Hz')
