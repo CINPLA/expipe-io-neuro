@@ -23,9 +23,9 @@ def _prepare_exdir_file(exdir_file):
     return general, subject, processing, epochs
 
 
-def convert(axona_filename, exdir_path):
+def convert(axona_file, exdir_path):
     axona_file = pyxona.File(axona_filename)
-    axona_directory, _ = os.path.split(axona_filename)
+    axona_directory, _ = os.path.split(axona_file._absolute_filename)
     exdir_file = exdir.File(exdir_path)
     dtime = axona_file._start_datetime.strftime('%Y-%m-%dT%H:%M:%S')
     exdir_file.attrs['session_start_time'] = dtime
@@ -47,18 +47,9 @@ def convert(axona_filename, exdir_path):
           target_folder)
 
 
-def load_axona_file(exdir_file):
-    acquisition = exdir_file["acquisition"]
-    axona_session = acquisition.attrs["axona_session"]
-    axona_filename = os.path.join(acquisition.directory, axona_session,
-                                  axona_session + ".set")
-    return pyxona.File(axona_filename)
-
-
-def make_channel_groups(exdir_path):
+def make_channel_groups(exdir_path, axona_file):
     exdir_file = exdir.File(exdir_path)
     general, subject, processing, epochs = _prepare_exdir_file(exdir_file)
-    axona_file = load_axona_file(exdir_file=exdir_file)
     channel_groups = {}
     elphys = processing.require_group('electrophysiology')
     for axona_channel_group in axona_file.channel_groups:
@@ -67,7 +58,6 @@ def make_channel_groups(exdir_path):
 
         channel_groups[axona_channel_group.channel_group_id] = {
             'channel_group': exdir_channel_group,
-            'axona_file': axona_file,
             'axona_channel_group': axona_channel_group,
             'start_time': 0 * pq.s,
             'stop_time': axona_file._duration
@@ -83,11 +73,10 @@ def make_channel_groups(exdir_path):
     return channel_groups
 
 
-def generate_analog_signals(exdir_path):
+def generate_analog_signals(exdir_path, axona_file):
     channel_groups = make_channel_groups(exdir_path)
     for channel_group_segment in channel_groups.values():
         channel_group = channel_group_segment['channel_group']
-        axona_file = channel_group_segment['axona_file']
         axona_channel_group = channel_group_segment['axona_channel_group']
         start_time = channel_group_segment['start_time']
         stop_time = channel_group_segment['stop_time']
@@ -116,11 +105,10 @@ def generate_analog_signals(exdir_path):
                 data.attrs["sample_rate"] = analog_signal.sample_rate
 
 
-def generate_clusters(exdir_path):
+def generate_clusters(exdir_path, axona_file):
     channel_groups = make_channel_groups(exdir_path)
     for channel_group_segment in channel_groups.values():
         channel_group = channel_group_segment['channel_group']
-        axona_file = channel_group_segment['axona_file']
         axona_channel_group = channel_group_segment['axona_channel_group']
         spike_train = axona_channel_group.spike_train
         start_time = channel_group_segment['start_time']
@@ -141,11 +129,10 @@ def generate_clusters(exdir_path):
                 nums.attrs["num_samples"] = len(cut.indices)
 
 
-def generate_units(exdir_path):
+def generate_units(exdir_path, axona_file):
     channel_groups = make_channel_groups(exdir_path)
     for channel_group_segment in channel_groups.values():
         channel_group = channel_group_segment['channel_group']
-        axona_file = channel_group_segment['axona_file']
         axona_channel_group = channel_group_segment['axona_channel_group']
         spike_train = axona_channel_group.spike_train
         start_time = channel_group_segment['start_time']
@@ -172,11 +159,10 @@ def generate_units(exdir_path):
                     unit.attrs["unit_description"] = None
 
 
-def generate_spike_trains(exdir_path):
+def generate_spike_trains(exdir_path, axona_file):
     channel_groups = make_channel_groups(exdir_path)
     for channel_group_segment in channel_groups.values():
         channel_group = channel_group_segment['channel_group']
-        axona_file = channel_group_segment['axona_file']
         axona_channel_group = channel_group_segment['axona_channel_group']
         start_time = channel_group_segment['start_time']
         stop_time = channel_group_segment['stop_time']
@@ -206,10 +192,9 @@ def generate_spike_trains(exdir_path):
         times.attrs["num_samples"] = spike_train.spike_count
 
 
-def generate_tracking(exdir_path):
+def generate_tracking(exdir_path, axona_file):
     exdir_file = exdir.File(exdir_path)
     general, subject, processing, epochs = _prepare_exdir_file(exdir_file)
-    axona_file = load_axona_file(exdir_file=exdir_file)
     tracking = processing.require_group('tracking')
     # NOTE axona supports only one camera, but other setups might support several
     camera = tracking.require_group("camera_0")
@@ -230,11 +215,10 @@ def generate_tracking(exdir_path):
         led.attrs['stop_time'] = axona_file._duration
 
 
-def generate_inp(exdir_path):
+def generate_inp(exdir_path, axona_file):
     # TODO should we save duration as attr or use start-stop time?
     exdir_file = exdir.File(exdir_path)
     general, subject, processing, epochs = _prepare_exdir_file(exdir_file)
-    axona_file = load_axona_file(exdir_file=exdir_file)
     inp = epochs.require_group("axona_inp")
 
     if not all(key in inp.attrs for key in ['start_time', 'stop_time']):
