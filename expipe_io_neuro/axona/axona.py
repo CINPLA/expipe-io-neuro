@@ -24,7 +24,7 @@ def _prepare_exdir_file(exdir_file):
 
 
 def convert(axona_file, exdir_path):
-    axona_file = pyxona.File(axona_filename)
+    # axona_file = pyxona.File(axona_file)
     axona_directory, _ = os.path.split(axona_file._absolute_filename)
     exdir_file = exdir.File(exdir_path)
     dtime = axona_file._start_datetime.strftime('%Y-%m-%dT%H:%M:%S')
@@ -74,7 +74,7 @@ def make_channel_groups(exdir_path, axona_file):
 
 
 def generate_analog_signals(exdir_path, axona_file):
-    channel_groups = make_channel_groups(exdir_path)
+    channel_groups = make_channel_groups(exdir_path, axona_file)
     for channel_group_segment in channel_groups.values():
         channel_group = channel_group_segment['channel_group']
         axona_channel_group = channel_group_segment['axona_channel_group']
@@ -106,7 +106,7 @@ def generate_analog_signals(exdir_path, axona_file):
 
 
 def generate_clusters(exdir_path, axona_file):
-    channel_groups = make_channel_groups(exdir_path)
+    channel_groups = make_channel_groups(exdir_path, axona_file)
     for channel_group_segment in channel_groups.values():
         channel_group = channel_group_segment['channel_group']
         axona_channel_group = channel_group_segment['axona_channel_group']
@@ -130,7 +130,7 @@ def generate_clusters(exdir_path, axona_file):
 
 
 def generate_units(exdir_path, axona_file):
-    channel_groups = make_channel_groups(exdir_path)
+    channel_groups = make_channel_groups(exdir_path, axona_file)
     for channel_group_segment in channel_groups.values():
         channel_group = channel_group_segment['channel_group']
         axona_channel_group = channel_group_segment['axona_channel_group']
@@ -160,7 +160,7 @@ def generate_units(exdir_path, axona_file):
 
 
 def generate_spike_trains(exdir_path, axona_file):
-    channel_groups = make_channel_groups(exdir_path)
+    channel_groups = make_channel_groups(exdir_path, axona_file)
     for channel_group_segment in channel_groups.values():
         channel_group = channel_group_segment['channel_group']
         axona_channel_group = channel_group_segment['axona_channel_group']
