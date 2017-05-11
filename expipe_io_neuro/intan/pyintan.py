@@ -139,8 +139,13 @@ class File:
 
         # apply probe channel mapping
         # TODO multiple ports -> append channel index
-        recorded_channels = sorted([data['amplifier_channels'][ch]['chip_channel']
-                                                   for ch in np.arange(len(data['amplifier_channels']))])
+        recorded_channels = []
+        newchan = 0
+        for port in np.arange(len(data['amplifier_channels'])):
+            # for ch in data['amplifier_channels'][port]['chip_channel']:
+            recorded_channels.append(newchan)
+            newchan += 1
+
         print('Recorded channels: ', recorded_channels)
         self._channel_info['channels'] = recorded_channels
         if probefile is not None:
@@ -732,7 +737,8 @@ class File:
                 board_dig_in_data = []
                 for i in range(num_board_dig_in_channels):
                     # find idx of high level
-                    idx_high = np.where(board_dig_in_raw == 2**board_dig_in_channels[i]['native_order'])
+                    lev = 2**board_dig_in_channels[i]['native_order']
+                    idx_high = np.where(board_dig_in_raw == lev)
                     rising, falling = get_rising_falling_edges(idx_high)
                     board_dig_in_data.append(t[rising])
                 board_dig_in_data = np.array(board_dig_in_data) * pq.s
@@ -744,7 +750,8 @@ class File:
                 board_dig_out_data = []
                 for i in range(num_board_dig_out_channels):
                     # find idx of high level
-                    idx_high = np.where(board_dig_out_raw == 2**board_dig_in_channels[i]['native_order'])
+                    lev = 2**board_dig_out_channels[i]['native_order']
+                    idx_high = np.where(board_dig_out_raw == lev)
                     rising, falling = get_rising_falling_edges(idx_high)
                     board_dig_out_data.append(t[rising])
                 board_dig_out_data = np.array(board_dig_out_data) * pq.s
@@ -773,67 +780,67 @@ class File:
             for ch in np.arange(amplifier_data.shape[0]):
                 self._channel_info['gain'][str(ch)] = anas_gain
 
-            if np.count_nonzero(stim_data) != 0:
-                # TODO only save stim channel and respective signals waveform
-                stim_polarity = np.zeros((num_amplifier_channels, num_amplifier_samples))
-
-                compliance_limit_data_idx = np.where(stim_data >= 2 ** 15)
-                stim_data[compliance_limit_data_idx] -= 2 ** 15
-                charge_recovery_data_idx = np.where(stim_data >= 2 ** 14)
-                stim_data[charge_recovery_data_idx] -= 2 ** 14
-                amp_settle_data_idx = np.where(stim_data >= 2 ** 13)
-                stim_data[amp_settle_data_idx] -= 2 ** 13
-
-                stim_polarity_idx = np.where(stim_data >= 2 ** 8)
-                stim_polarity[stim_polarity_idx] = 1
-                stim_data[stim_polarity_idx] -= 2 ** 8
-                stim_polarity = 1 - 2 * stim_polarity  # convert(0 = pos, 1 = neg) to + / -1
-                stim_data *= stim_polarity
-                stim_data = stim_parameters['stim_step_size'] * stim_data / float(1e-6)  # units = microamps
-
-                stim_channels = []
-                stim_signal = []
-
-                for ch, stim in enumerate(stim_data):
-                    if np.count_nonzero(stim) != 0:
-                        stim_channels.append(ch)
-                        stim_signal.append(stim)
-                stim_channels = np.array(stim_channels)
-                stim_signal = np.array(stim_signal)
-
-                # Clear variables
-                del stim_polarity, stim_data
-
-                amp_settle_data = []
-                charge_recovery_data = []
-                compliance_limit_data = []
-
-                for chan in np.arange(num_amplifier_channels):
-                    if len(np.where(amp_settle_data_idx[0] == chan)[0]) != 0:
-                        amp_settle_data.append(t[amp_settle_data_idx[1][np.where(amp_settle_data_idx[0] == chan)[0]]])
-                    else:
-                        amp_settle_data.append([])
-                    if len(np.where(charge_recovery_data_idx[0] == chan)[0]) != 0:
-                        charge_recovery_data.append(
-                            t[charge_recovery_data_idx[1][np.where(charge_recovery_data_idx[0] == chan)[0]]])
-                    else:
-                        charge_recovery_data.append([])
-                    if len(np.where(compliance_limit_data_idx[0] == chan)[0]) != 0:
-                        compliance_limit_data.append(
-                            t[compliance_limit_data_idx[1][np.where(compliance_limit_data_idx[0] == chan)[0]]])
-                    else:
-                        compliance_limit_data.append([])
-
-                amp_settle_data = np.array(amp_settle_data)
-                charge_recovery_data = np.array(charge_recovery_data)
-                compliance_limit_data = np.array(compliance_limit_data)
-            else:
-                print('No stimulation data')
-                stim_channels = np.array([])
-                stim_signal = np.array([])
-                amp_settle_data = np.array([])
-                charge_recovery_data = np.array([])
-                compliance_limit_data = np.array([])
+            # if np.count_nonzero(stim_data) != 0:
+            #     # TODO only save stim channel and respective signals waveform
+            #     stim_polarity = np.zeros((num_amplifier_channels, num_amplifier_samples))
+            #
+            #     compliance_limit_data_idx = np.where(stim_data >= 2 ** 15)
+            #     stim_data[compliance_limit_data_idx] -= 2 ** 15
+            #     charge_recovery_data_idx = np.where(stim_data >= 2 ** 14)
+            #     stim_data[charge_recovery_data_idx] -= 2 ** 14
+            #     amp_settle_data_idx = np.where(stim_data >= 2 ** 13)
+            #     stim_data[amp_settle_data_idx] -= 2 ** 13
+            #
+            #     stim_polarity_idx = np.where(stim_data >= 2 ** 8)
+            #     stim_polarity[stim_polarity_idx] = 1
+            #     stim_data[stim_polarity_idx] -= 2 ** 8
+            #     stim_polarity = 1 - 2 * stim_polarity  # convert(0 = pos, 1 = neg) to + / -1
+            #     stim_data *= stim_polarity
+            #     stim_data = stim_parameters['stim_step_size'] * stim_data / float(1e-6)  # units = microamps
+            #
+            #     stim_channels = []
+            #     stim_signal = []
+            #
+            #     for ch, stim in enumerate(stim_data):
+            #         if np.count_nonzero(stim) != 0:
+            #             stim_channels.append(ch)
+            #             stim_signal.append(stim)
+            #     stim_channels = np.array(stim_channels)
+            #     stim_signal = np.array(stim_signal)
+            #
+            #     # Clear variables
+            #     del stim_polarity, stim_data
+            #
+            #     amp_settle_data = []
+            #     charge_recovery_data = []
+            #     compliance_limit_data = []
+            #
+            #     for chan in np.arange(num_amplifier_channels):
+            #         if len(np.where(amp_settle_data_idx[0] == chan)[0]) != 0:
+            #             amp_settle_data.append(t[amp_settle_data_idx[1][np.where(amp_settle_data_idx[0] == chan)[0]]])
+            #         else:
+            #             amp_settle_data.append([])
+            #         if len(np.where(charge_recovery_data_idx[0] == chan)[0]) != 0:
+            #             charge_recovery_data.append(
+            #                 t[charge_recovery_data_idx[1][np.where(charge_recovery_data_idx[0] == chan)[0]]])
+            #         else:
+            #             charge_recovery_data.append([])
+            #         if len(np.where(compliance_limit_data_idx[0] == chan)[0]) != 0:
+            #             compliance_limit_data.append(
+            #                 t[compliance_limit_data_idx[1][np.where(compliance_limit_data_idx[0] == chan)[0]]])
+            #         else:
+            #             compliance_limit_data.append([])
+            #
+            #     amp_settle_data = np.array(amp_settle_data)
+            #     charge_recovery_data = np.array(charge_recovery_data)
+            #     compliance_limit_data = np.array(compliance_limit_data)
+            # else:
+            print('No stimulation data')
+            stim_channels = np.array([])
+            stim_signal = np.array([])
+            amp_settle_data = np.array([])
+            charge_recovery_data = np.array([])
+            compliance_limit_data = np.array([])
 
             if np.count_nonzero(board_adc_data) != 0:
                 board_adc_data -= 32768  # units = volts
@@ -986,7 +993,6 @@ def extract_sync_times(adc_signal, times):
     :return: array with rising times
     '''
     idx_high = np.where(adc_signal>1.65)[0]
-
     rising = []
 
     if len(idx_high) != 0:

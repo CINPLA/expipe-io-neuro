@@ -782,7 +782,7 @@ class File:
                                 # remove start_time (offset) and transform in seconds
                                 syncs = syncs - self.start_timestamp
                                 syncs = syncs.astype(dtype='float') / self.sample_rate
-                                syncs = np.array([syncs])
+                                syncs = np.array([syncs]) * pq.s
                             else:
                                 for chan in syncchan:
                                     idx_chan = np.where(data['channel'] == chan)
@@ -791,7 +791,7 @@ class File:
                                     new_sync = new_sync - self.start_timestamp
                                     new_sync = new_sync.astype(dtype='float') / self.sample_rate
                                     syncs.append(new_sync)
-                                syncs = np.array(syncs)
+                                syncs = np.array(syncs) * pq.s
 
                         self._sync_signals = [Sync(
                             channel_id=syncchan,
