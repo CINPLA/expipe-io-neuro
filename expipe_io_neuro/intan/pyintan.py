@@ -406,17 +406,12 @@ class File:
                 anas.signal = clip_anas(anas, self.times, clipping_times, start_end)
             for digs in self.digital_in_signals:
                 digs.times = clip_digs(digs, clipping_times, start_end)
-                digs.times = [times - clipping_times[0]
-                              for times in digs.times if len(digs.times) > 0]
             for digs in self.digital_out_signals:
                 digs.times = clip_digs(digs, clipping_times, start_end)
-                digs.times = [times - clipping_times[0]
-                              for times in digs.times if len(digs.times) > 0]
             for stim in self.stimulation:
                 stim.stim_signal = clip_stimulation(stim, self.times, clipping_times, start_end)
 
             self._times = clip_times(self._times, clipping_times, start_end)
-            self._times -= self._times[0]
             self._duration = self._times[-1] - self._times[0]
         else:
             print('Empty clipping times list.')
@@ -1154,7 +1149,10 @@ def clip_digs(digital_signals, clipping_times, start_end):
                 idx = np.where(dig < clipping_times[0])
         else:
             raise AttributeError('clipping_times must be of length 1 or 2')
-        digs_clip.append(dig[idx])
+        if start_end != 'end':
+            digs_clip.append(dig[idx] - clipping_times[0])
+        else:
+            digs_clip.append(dig[idx])
 
     return np.array(digs_clip) * pq.s
 
@@ -1178,7 +1176,10 @@ def clip_times(times, clipping_times, start_end):
             idx = np.where(times < clipping_times[0])
     else:
         raise AttributeError('clipping_times must be of length 1 or 2')
-    times_clip = times[idx]
+    if start_end != 'end':
+        times_clip = times[idx] - clipping_times[0]
+    else:
+        times_clip = times[idx]
 
     return times_clip
 
