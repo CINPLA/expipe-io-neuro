@@ -26,7 +26,7 @@ def _prepare_exdir_file(exdir_file):
 def convert(intan_file, exdir_path, copyfiles=True):
 
     # intan_file = pyintan.File(intan_filepath, probefile)
-    exdir_file = exdir.File(exdir_path)
+    exdir_file = exdir.File(exdir_path, plugins=exdir.plugins.quantities)
     dtime = intan_file.datetime.strftime('%Y-%m-%dT%H:%M:%S')
     exdir_file.attrs['session_start_time'] = dtime
     exdir_file.attrs['session_duration'] = intan_file.duration
@@ -56,7 +56,7 @@ def convert(intan_file, exdir_path, copyfiles=True):
 
 
 def _prepare_channel_groups(exdir_path, intan_file):
-    exdir_file = exdir.File(exdir_path)
+    exdir_file = exdir.File(exdir_path, plugins=exdir.plugins.quantities)
     general, subject, processing, epochs = _prepare_exdir_file(exdir_file)
 
     exdir_channel_groups = []
@@ -116,7 +116,7 @@ def generate_lfp(exdir_path, intan_file):
 
 def generate_spike_trains(exdir_path):
     import neo
-    exdir_file = exdir.File(exdir_path)
+    exdir_file = exdir.File(exdir_path, plugins=exdir.plugins.quantities)
     acquisition = exdir_file["acquisition"]
     intan_session = acquisition.attrs["intan_session"]
     intan_directory = op.join(str(acquisition.directory), intan_session)

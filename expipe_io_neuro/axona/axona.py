@@ -5,10 +5,8 @@ import glob
 import os
 import quantities as pq
 import numpy as np
+import exdir.plugins.quantities
 
-# from expipe.core import Filerecord
-# from expipe.core import user
-# from expipe import settings
 
 # TODO inform database about axona data being included
 # TODO avoid overwriting existing data!
@@ -26,7 +24,7 @@ def _prepare_exdir_file(exdir_file):
 def convert(axona_file, exdir_path):
     # axona_file = pyxona.File(axona_file)
     axona_directory, _ = os.path.split(axona_file._absolute_filename)
-    exdir_file = exdir.File(exdir_path)
+    exdir_file = exdir.File(exdir_path, plugins=exdir.plugins.quantities)
     dtime = axona_file._start_datetime.strftime('%Y-%m-%dT%H:%M:%S')
     exdir_file.attrs['session_start_time'] = dtime
     exdir_file.attrs['session_duration'] = axona_file._duration
@@ -49,7 +47,7 @@ def convert(axona_file, exdir_path):
 
 
 def make_channel_groups(exdir_path, axona_file):
-    exdir_file = exdir.File(exdir_path)
+    exdir_file = exdir.File(exdir_path, plugins=exdir.plugins.quantities)
     general, subject, processing, epochs = _prepare_exdir_file(exdir_file)
     channel_groups = {}
     elphys = processing.require_group('electrophysiology')
@@ -212,7 +210,7 @@ def generate_spike_trains(exdir_path, axona_file):
 
 
 def generate_tracking(exdir_path, axona_file):
-    exdir_file = exdir.File(exdir_path)
+    exdir_file = exdir.File(exdir_path, plugins=exdir.plugins.quantities)
     general, subject, processing, epochs = _prepare_exdir_file(exdir_file)
     tracking = processing.require_group('tracking')
     # NOTE axona supports only one camera, but other setups might support several
@@ -236,7 +234,7 @@ def generate_tracking(exdir_path, axona_file):
 
 def generate_inp(exdir_path, axona_file):
     # TODO should we save duration as attr or use start-stop time?
-    exdir_file = exdir.File(exdir_path)
+    exdir_file = exdir.File(exdir_path, plugins=exdir.plugins.quantities)
     general, subject, processing, epochs = _prepare_exdir_file(exdir_file)
     inp = epochs.require_group("axona_inp")
 

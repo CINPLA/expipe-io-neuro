@@ -6,7 +6,7 @@ import quantities as pq
 import numpy as np
 import scipy.signal as ss
 import copy
-
+import exdir.plugins.quantities
 
 # from expipe.core import Filerecord
 # from expipe.core import user
@@ -27,7 +27,7 @@ def _prepare_exdir_file(exdir_file):
 
 
 def convert(openephys_rec, exdir_path, session):
-    exdir_file = exdir.File(exdir_path)
+    exdir_file = exdir.File(exdir_path, plugins=exdir.plugins.quantities)
     experiment = openephys_rec.experiment
     dtime = experiment.datetime.strftime('%Y-%m-%dT%H:%M:%S')
     exdir_file.attrs['session_start_time'] = dtime
@@ -44,7 +44,7 @@ def convert(openephys_rec, exdir_path, session):
 
 
 def _prepare_channel_groups(exdir_path, openephys_rec):
-    exdir_file = exdir.File(exdir_path)
+    exdir_file = exdir.File(exdir_path, plugins=exdir.plugins.quantities)
     general, subject, processing, epochs = _prepare_exdir_file(exdir_file)
     exdir_channel_groups = []
     elphys = processing.require_group('electrophysiology')
@@ -170,7 +170,7 @@ def generate_spike_trains(exdir_path, openephys_rec, source='klusta'):
     import neo
     if source == 'klusta': # TODO acquire features and masks
         print('Generating spike trains from KWIK file')
-        exdir_file = exdir.File(exdir_path)
+        exdir_file = exdir.File(exdir_path, plugins=exdir.plugins.quantities)
         acquisition = exdir_file["acquisition"]
         openephys_session = acquisition.attrs["openephys_session"]
         klusta_directory = op.join(
@@ -224,7 +224,7 @@ def generate_spike_trains(exdir_path, openephys_rec, source='klusta'):
     elif source == 'kilosort':
         print('Generating spike trains from KiloSort')
         exdirio = neo.io.ExdirIO(exdir_path)
-        exdir_file = exdir.File(exdir_path)
+        exdir_file = exdir.File(exdir_path, plugins=exdir.plugins.quantities)
         openephys_directory = op.join(str(exdir_file["acquisition"].directory),
                                       exdir_file["acquisition"].attrs["openephys_session"])
         # iterate over channel groups. As there are no channel associated with
@@ -277,7 +277,7 @@ def generate_spike_trains(exdir_path, openephys_rec, source='klusta'):
 
 
 def generate_tracking(exdir_path, openephys_rec):
-    exdir_file = exdir.File(exdir_path)
+    exdir_file = exdir.File(exdir_path, plugins=exdir.plugins.quantities)
     general, subject, processing, epochs = _prepare_exdir_file(exdir_file)
     tracking = processing.require_group('tracking')
     # NOTE openephys supports only one camera, but other setups might support several
