@@ -284,7 +284,6 @@ def generate_tracking(exdir_path, openephys_rec):
     camera = tracking.require_group("camera_0")
     position = camera.require_group("Position")
     position.attrs['start_time'] = 0 * pq.s
-    # TODO update to new
     position.attrs['stop_time'] = openephys_rec.duration
     for n, tracking in enumerate(openephys_rec.tracking):
         x, y, times = tracking.x, tracking.y, tracking.times
@@ -295,3 +294,60 @@ def generate_tracking(exdir_path, openephys_rec):
         dset.attrs['num_samples'] = len(times)
         led.attrs['start_time'] = 0 * pq.s
         led.attrs['stop_time'] = openephys_rec.duration
+
+def generate_events(exdir_path, openephys_rec):
+    exdir_file = exdir.File(exdir_path, plugins=exdir.plugins.quantities)
+    general, subject, processing, epochs = _prepare_exdir_file(exdir_file)
+    events = epochs.require_group('events')
+
+    for event_source in openephys_rec.events:
+        ev_group = events.require_group(event_source.processor.lower() + '_' + str(event_source.node_id))
+        ev_group.attrs['node_id'] = event_source.node_id
+        ev_group.attrs['processor'] = event_source.processor.lower()
+        timestamps, durations, data = _get_epochs_from_event(event_source)
+
+        times_dset = ev_group.require_dataset('timestamps', data=timestamps)
+        times_dset.attrs['num_samples'] = len(timestamps)
+        dur_dset = ev_group.require_dataset("durations", data=durations)
+        dur_dset.attrs['num_samples'] = len(durations)
+        dset = ev_group.require_dataset("data", data=data)
+        dset.attrs['num_samples'] = len(data)
+
+
+def _get_epochs_from_event(event):
+    state_on_idxs = np.where(event.channel_states == 1)
+    state_off_idxs = np.where(event.channel_states == -1)
+    timestamps = event.times[state_on_idxs]
+
+    if len(state_off_idxs[0]) == 0:
+        durations = np.zeros(len(timestamps))
+        data = event.channels
+    else:
+        if len(state_on_idxs[0]) == len(state_off_idxs[0]):
+            durations = event.times[state_off_idxs] -  event.times[state_on_idxs]
+            data = event.channels[state_on_idxs]
+        else:
+            timestamps, durations, data = [], [], []
+            unit = event.times.units
+            for i, (st, st_1) in enumerate(zip(event.channel_states[:-1], event.channel_states[1:])):
+                if i < len(event.channel_states) - 2:
+                    if st == 1:
+                        if st_1 == -1:
+                            durations.append(event.times[i+1] - event.times[i])
+                            timestamps.append(event.times[i])
+                            data.append(event.channels[i])
+                        else:
+                            durations.append(0)
+                            timestamps.append(event.times[i])
+                            data.append(event.channels[i])
+                else:
+                    if st == 1:
+                        durations.append(0)
+                        timestamps.append(event.times[i])
+                        data.append(event.channels[i])
+
+            timestamps = np.array(timestamps) * unit
+            durations = np.array(durations) * unit
+            data = np.array(data)
+
+    return timestamps, durations, data
