@@ -94,7 +94,6 @@ def list_dict_get(list_dict, name):
         raise ValueError('unable to get "' + name + '"')
 
 
-
 if __name__ == '__main__':
     exdir_path = '/media/norstore/server/malin_cobra/1871-200717-03/main.exdir'
     psyexp_path = '/home/mikkel/Dropbox/scripting/python/expipe/psychopy/psychopymalinegen/testMil.psyexp'

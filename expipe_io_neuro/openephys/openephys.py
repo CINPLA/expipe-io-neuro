@@ -36,8 +36,19 @@ def convert(openephys_rec, exdir_path, session):
     general = exdir_file.require_group("general")
 
     target_folder = op.join(str(acquisition.directory), session)
-    acquisition.attrs["openephys_session"] = session
+    acquisition.attrs["session"] = session
     acquisition.attrs["acquisition_system"] = experiment.acquisition_system
+
+    print("Copying ", openephys_rec.absolute_foldername, " to ", target_folder)
+    shutil.copytree(experiment.file.absolute_foldername, target_folder)
+
+
+def convert_tracking(openephys_rec, exdir_path, session):
+    exdir_file = exdir.File(exdir_path, plugins=exdir.plugins.quantities)
+    experiment = openephys_rec.experiment
+    acquisition = exdir_file.require_group("acquisition")
+
+    target_folder = op.join(str(acquisition.directory), session, 'tracking')
 
     print("Copying ", openephys_rec.absolute_foldername, " to ", target_folder)
     shutil.copytree(experiment.file.absolute_foldername, target_folder)
@@ -295,10 +306,11 @@ def generate_tracking(exdir_path, openephys_rec):
         led.attrs['start_time'] = 0 * pq.s
         led.attrs['stop_time'] = openephys_rec.duration
 
+
 def generate_events(exdir_path, openephys_rec):
     exdir_file = exdir.File(exdir_path, plugins=exdir.plugins.quantities)
     general, subject, processing, epochs = _prepare_exdir_file(exdir_file)
-    events = epochs.require_group('events')
+    events = epochs.require_group('open-ephys-epochs')
 
     for event_source in openephys_rec.events:
         ev_group = events.require_group(event_source.processor.lower() + '_' + str(event_source.node_id))

@@ -1,1 +1,1 @@
-from . import intan, pyintan
+from . import intan, tools

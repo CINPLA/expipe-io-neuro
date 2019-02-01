@@ -10,9 +10,6 @@ import numpy as np
 # from expipe import settings
 import os.path as op
 
-# TODO inform database about intan data being included
-# TODO SpikeTrain class - needs klusta stuff
-
 
 def _prepare_exdir_file(exdir_file):
     general = exdir_file.require_group("general")
@@ -23,9 +20,7 @@ def _prepare_exdir_file(exdir_file):
     return general, subject, processing, epochs
 
 
-def convert(intan_file, exdir_path, copyfiles=True):
-
-    # intan_file = pyintan.File(intan_filepath, probefile)
+def convert(intan_file, exdir_path, session):
     exdir_file = exdir.File(exdir_path, plugins=exdir.plugins.quantities)
     dtime = intan_file.datetime.strftime('%Y-%m-%dT%H:%M:%S')
     exdir_file.attrs['session_start_time'] = dtime
@@ -35,24 +30,14 @@ def convert(intan_file, exdir_path, copyfiles=True):
     processing = exdir_file.require_group("processing")
     subject = general.require_group("subject")
 
-    acquisition.attrs["intan_session"] = intan_file.session
-    acquisition.attrs["acquisition_system"] = 'Intan'
+    target_folder = op.join(str(acquisition.directory), session)
+    acquisition.attrs["session"] = session
+    acquisition.attrs["acquisition_system"] = intan_file.acquisition_system
 
-    if copyfiles:
-        target_folder = op.join(str(acquisition.directory), intan_file.session)
-        os.makedirs(target_folder)
-        shutil.copy(intan_file._absolute_filename, target_folder)
-
-        print("Copied", intan_file.session, "to", target_folder)
-
-
-# def load_intan_file(exdir_path):
-#     acquisition = exdir_path["acquisition"]
-#     intan_session = acquisition.attrs["intan_session"]
-#     intan_directory = op.join(acquisition.directory, intan_session)
-#     probefile = op.join(intan_directory, 'intan_channelmap.prb')
-#     intan_fullpath = op.join(intan_directory, intan_session+'.rhs')
-#     return pyintan.File(intan_fullpath, probefile)
+    print("Copying ", intan_file.absolute_filename, " to ", target_folder)
+    if not op.isdir(target_folder):
+        os.mkdir(target_folder)
+    shutil.copyfile(intan_file.absolute_filename, op.join(target_folder, intan_file.fname))
 
 
 def _prepare_channel_groups(exdir_path, intan_file):
@@ -75,94 +60,66 @@ def _prepare_channel_groups(exdir_path, intan_file):
     return exdir_channel_groups
 
 
-def generate_lfp(exdir_path, intan_file):
-    import scipy.signal as ss
-    import copy
-    exdir_channel_groups = _prepare_channel_groups(exdir_path, intan_file)
-    for channel_group, intan_channel_group in zip(exdir_channel_groups,
-                                                      intan_file.channel_groups):
-        lfp = channel_group.require_group("LFP")
-        for channel in intan_channel_group.channels:
-                lfp_timeseries = lfp.require_group(
-                    "LFP_timeseries_{}".format(channel.index)
-                )
-                analog_signal = intan_channel_group.analog_signals[channel.index]
-                # decimate
-                target_rate = 1000 * pq.Hz
-                signal = np.array(analog_signal.signal, dtype=float)
-
-                sample_rate = copy.copy(analog_signal.sample_rate)
-                qs = [10, int((analog_signal.sample_rate / target_rate) / 10)]
-                for q in qs:
-                    signal = ss.decimate(signal, q=q, zero_phase=True)
-                    sample_rate /= q
-                t_stop = len(signal) / sample_rate
-                assert round(t_stop, 1) == round(intan_file.duration, 1), '{}, {}'.format(t_stop, intan_file.duration)
-
-                signal = signal * pq.uV
-
-                lfp_timeseries.attrs["num_samples"] = len(signal)
-                lfp_timeseries.attrs["start_time"] = 0 * pq.s
-                lfp_timeseries.attrs["stop_time"] = t_stop
-                lfp_timeseries.attrs["sample_rate"] = sample_rate
-                lfp_timeseries.attrs["electrode_identity"] = analog_signal.channel_id
-                lfp_timeseries.attrs["electrode_idx"] = analog_signal.channel_id - intan_channel_group.channel_group_id * 4
-                lfp_timeseries.attrs['electrode_group_id'] = intan_channel_group.channel_group_id
-                data = lfp_timeseries.require_dataset("data", data=signal)
-                data.attrs["num_samples"] = len(signal)
-                # NOTE: In exdirio (python-neo) sample rate is required on dset #TODO
-                data.attrs["sample_rate"] = sample_rate
-
-
-def generate_spike_trains(exdir_path):
-    import neo
+def generate_events(exdir_path, intan_rec):
     exdir_file = exdir.File(exdir_path, plugins=exdir.plugins.quantities)
-    acquisition = exdir_file["acquisition"]
-    intan_session = acquisition.attrs["intan_session"]
-    intan_directory = op.join(str(acquisition.directory), intan_session)
-    kwikfile = [f for f in os.listdir(intan_directory) if f.endswith('_klusta.kwik')][0]
-    if len(kwikfile) > 0:
-        kwikfile = op.join(intan_directory, kwikfile[0])
-        if op.exists(kwikfile):
-            kwikio = neo.io.KwikIO(filename=kwikfile)
-            blk = kwikio.read_block()
-            exdirio = neo.io.ExdirIO(exdir_path)
-            exdirio.write_block(blk)
-        print('Spikes copied to: ', kwikfile)
+    general, subject, processing, epochs = _prepare_exdir_file(exdir_file)
+    events = epochs.require_group('intan-epochs')
+
+    for event_source in intan_rec.digital_in_events:
+        ev_group = events.require_group('digital_in_' + str(int(np.unique(event_source.channels))))
+        timestamps, durations, data = _get_epochs_from_event(event_source)
+        times_dset = ev_group.require_dataset('timestamps', data=timestamps)
+        times_dset.attrs['num_samples'] = len(timestamps)
+        dur_dset = ev_group.require_dataset("durations", data=durations)
+        dur_dset.attrs['num_samples'] = len(durations)
+        dset = ev_group.require_dataset("data", data=data)
+        dset.attrs['num_samples'] = len(data)
+
+    for event_source in intan_rec.digital_out_events:
+        ev_group = events.require_group('digital_out_' + str(int(np.unique(event_source.channels))))
+        timestamps, durations, data = _get_epochs_from_event(event_source)
+        times_dset = ev_group.require_dataset('timestamps', data=timestamps)
+        times_dset.attrs['num_samples'] = len(timestamps)
+        dur_dset = ev_group.require_dataset("durations", data=durations)
+        dur_dset.attrs['num_samples'] = len(durations)
+        dset = ev_group.require_dataset("data", data=data)
+        dset.attrs['num_samples'] = len(data)
+
+
+def _get_epochs_from_event(event):
+    state_on_idxs = np.where(event.channel_states == 1)
+    state_off_idxs = np.where(event.channel_states == -1)
+    timestamps = event.times[state_on_idxs]
+
+    if len(state_off_idxs[0]) == 0:
+        durations = np.zeros(len(timestamps))
+        data = event.channels
     else:
-        print('.kwik file is not in exdir folder')
+        if len(state_on_idxs[0]) == len(state_off_idxs[0]):
+            durations = event.times[state_off_idxs] - event.times[state_on_idxs]
+            data = event.channels[state_on_idxs]
+        else:
+            timestamps, durations, data = [], [], []
+            unit = event.times.units
+            for i, (st, st_1) in enumerate(zip(event.channel_states[:-1], event.channel_states[1:])):
+                if i < len(event.channel_states) - 2:
+                    if st == 1:
+                        if st_1 == -1:
+                            durations.append(event.times[i+1] - event.times[i])
+                            timestamps.append(event.times[i])
+                            data.append(event.channels[i])
+                        else:
+                            durations.append(0)
+                            timestamps.append(event.times[i])
+                            data.append(event.channels[i])
+                else:
+                    if st == 1:
+                        durations.append(0)
+                        timestamps.append(event.times[i])
+                        data.append(event.channels[i])
 
+            timestamps = np.array(timestamps) * unit
+            durations = np.array(durations) * unit
+            data = np.array(data)
 
-# class OpenEphysFilerecord(Filerecord):
-#     def __init__(self, action, filerecord_id=None):
-#         super().__init__(action, filerecord_id)
-#
-#     def import_file(self, intan_directory):
-#         convert(intan_directory=intan_directory,
-#                 exdir_path=op.join(settings["data_path"], self.local_path))
-#
-#     def generate_tracking(self):
-#         generate_tracking(self.local_path)
-#
-#     def generate_lfp(self):
-#         generate_analog_signals(self.local_path)
-#
-#     def generate_spike_trains(self):
-#         generate_spike_trains(self.local_path)
-#
-#     def generate_inp(self):
-#         generate_inp(self.local_path)
-#
-# if __name__ == '__main__':
-#     intan_directory = '/home/mikkel/Ephys/1703_2017-04-15_13-34-12'
-#     exdir_path = '/home/mikkel/apps/expipe-project/intantest.exdir'
-#     probefile = '/home/mikkel/Ephys/tetrodes32ch-klusta.prb'
-#     if op.exists(exdir_path):
-#         shutil.rmtree(exdir_path)
-#     convert(intan_directory=intan_directory,
-#             exdir_path=exdir_path,
-#             probefile=probefile)
-#     generate_tracking(exdir_path)
-#     generate_lfp(exdir_path)
-#     generate_spike_trains(exdir_path)
-#     # generate_inp(exdir_path)
+    return timestamps, durations, data

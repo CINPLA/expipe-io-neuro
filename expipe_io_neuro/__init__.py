@@ -1,4 +1,4 @@
-from .openephys import openephys#, pyopenephys
+from .openephys import openephys
 from .axona import axona
-# from .intan import intan, pyintan
+from .intan import intan
 # from .psychopy import psychopyio
