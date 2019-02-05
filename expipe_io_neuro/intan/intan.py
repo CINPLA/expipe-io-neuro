@@ -67,6 +67,7 @@ def generate_events(exdir_path, intan_rec):
 
     for event_source in intan_rec.digital_in_events:
         ev_group = events.require_group('digital_in_' + str(int(np.unique(event_source.channels))))
+        ev_group.attrs['provenance'] = 'intan'
         timestamps, durations, data = _get_epochs_from_event(event_source)
         times_dset = ev_group.require_dataset('timestamps', data=timestamps)
         times_dset.attrs['num_samples'] = len(timestamps)
@@ -77,6 +78,7 @@ def generate_events(exdir_path, intan_rec):
 
     for event_source in intan_rec.digital_out_events:
         ev_group = events.require_group('digital_out_' + str(int(np.unique(event_source.channels))))
+        ev_group.attrs['provenance'] = 'intan'
         timestamps, durations, data = _get_epochs_from_event(event_source)
         times_dset = ev_group.require_dataset('timestamps', data=timestamps)
         times_dset.attrs['num_samples'] = len(timestamps)

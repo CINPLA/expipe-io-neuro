@@ -316,6 +316,7 @@ def generate_events(exdir_path, openephys_rec):
         ev_group = events.require_group(event_source.processor.lower() + '_' + str(event_source.node_id))
         ev_group.attrs['node_id'] = event_source.node_id
         ev_group.attrs['processor'] = event_source.processor.lower()
+        ev_group.attrs['provenance'] = 'open-ephys'
         timestamps, durations, data = _get_epochs_from_event(event_source)
 
         times_dset = ev_group.require_dataset('timestamps', data=timestamps)
