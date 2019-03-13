@@ -103,7 +103,7 @@ def generate_lfp(exdir_path, openephys_rec):
                 lfp_timeseries.attrs["electrode_identity"] = analog_signal.channel_id
                 lfp_timeseries.attrs["electrode_idx"] = analog_signal.channel_id - openephys_channel_group.id * 4
                 lfp_timeseries.attrs['electrode_group_id'] = group_id
-                data = lfp_timeseries.require_dataset("data", data=signal)
+                data = lfp_timeseries.create_dataset("data", data=signal)
                 data.attrs["num_samples"] = len(signal)
                 # NOTE: In exdirio (python-neo) sample rate is required on dset #TODO
                 data.attrs["sample_rate"] = sample_rate
@@ -171,7 +171,7 @@ def generate_mua(exdir_path, openephys_rec, N=2, fcrit=300.*pq.Hz, car=True):
             mua_timeseries.attrs["electrode_identity"] = analog_signal.channel_id
             mua_timeseries.attrs["electrode_idx"] = analog_signal.channel_id - openephys_channel_group.id * 4
             mua_timeseries.attrs['electrode_group_id'] = group_id
-            data = mua_timeseries.require_dataset("data", data=signal)
+            data = mua_timeseries.create_dataset("data", data=signal)
             data.attrs["num_samples"] = len(signal)
             # NOTE: In exdirio (python-neo) sample rate is required on dset #TODO
             data.attrs["sample_rate"] = sample_rate
@@ -298,10 +298,10 @@ def generate_tracking(exdir_path, openephys_rec):
     position.attrs['stop_time'] = openephys_rec.duration
     for n, tracking in enumerate(openephys_rec.tracking):
         x, y, times = tracking.x, tracking.y, tracking.times
-        led = position.require_group("led_" + str(n))
-        dset = led.require_dataset('data', data=np.vstack((x, y)).T * pq.m)
+        led = position.create_group("led_" + str(n))
+        dset = led.create_dataset('data', data=np.vstack((x, y)).T * pq.m)
         dset.attrs['num_samples'] = len(times)
-        dset = led.require_dataset("timestamps", data=times)
+        dset = led.create_dataset("timestamps", data=times)
         dset.attrs['num_samples'] = len(times)
         led.attrs['start_time'] = 0 * pq.s
         led.attrs['stop_time'] = openephys_rec.duration
@@ -313,17 +313,17 @@ def generate_events(exdir_path, openephys_rec):
     events = epochs.require_group('open-ephys-epochs')
 
     for event_source in openephys_rec.events:
-        ev_group = events.require_group(event_source.processor.lower() + '_' + str(event_source.node_id))
+        ev_group = events.create_group(event_source.processor.lower() + '_' + str(event_source.node_id))
         ev_group.attrs['node_id'] = event_source.node_id
         ev_group.attrs['processor'] = event_source.processor.lower()
         ev_group.attrs['provenance'] = 'open-ephys'
         timestamps, durations, data = _get_epochs_from_event(event_source)
 
-        times_dset = ev_group.require_dataset('timestamps', data=timestamps)
+        times_dset = ev_group.create_dataset('timestamps', data=timestamps)
         times_dset.attrs['num_samples'] = len(timestamps)
-        dur_dset = ev_group.require_dataset("durations", data=durations)
+        dur_dset = ev_group.create_dataset("durations", data=durations)
         dur_dset.attrs['num_samples'] = len(durations)
-        dset = ev_group.require_dataset("data", data=data)
+        dset = ev_group.create_dataset("data", data=data)
         dset.attrs['num_samples'] = len(data)
 
 
