@@ -288,11 +288,14 @@ def generate_spike_trains(exdir_path, openephys_rec, source='klusta'):
 
 
 def generate_tracking(exdir_path, openephys_rec):
-    exdir_file = exdir.File(exdir_path, plugins=exdir.plugins.quantities)
+    exdir_file = exdir.File(
+        exdir_path, plugins=exdir.plugins.quantities)
     general, subject, processing, epochs = _prepare_exdir_file(exdir_file)
     tracking = processing.require_group('tracking')
     # NOTE openephys supports only one camera, but other setups might support several
     camera = tracking.require_group("camera_0")
+    if 'Position' in camera:
+        shutil.rmtree(camera['Position'].directory)
     position = camera.require_group("Position")
     position.attrs['start_time'] = 0 * pq.s
     position.attrs['stop_time'] = openephys_rec.duration
@@ -308,12 +311,16 @@ def generate_tracking(exdir_path, openephys_rec):
 
 
 def generate_events(exdir_path, openephys_rec):
-    exdir_file = exdir.File(exdir_path, plugins=exdir.plugins.quantities)
+    exdir_file = exdir.File(
+        exdir_path, plugins=exdir.plugins.quantities)
     general, subject, processing, epochs = _prepare_exdir_file(exdir_file)
     events = epochs.require_group('open-ephys-epochs')
 
     for event_source in openephys_rec.events:
-        ev_group = events.create_group(event_source.processor.lower() + '_' + str(event_source.node_id))
+        name = event_source.processor.lower() + '_' + str(event_source.node_id)
+        if name in events:
+            shutil.rmtree(events[name].directory)
+        ev_group = events.create_group(name)
         ev_group.attrs['node_id'] = event_source.node_id
         ev_group.attrs['processor'] = event_source.processor.lower()
         ev_group.attrs['provenance'] = 'open-ephys'
