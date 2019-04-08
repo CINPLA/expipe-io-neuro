@@ -81,7 +81,14 @@ def generate_analog_signals(exdir_path, axona_file):
         stop_time = channel_group_segment['stop_time']
         lfp_index = 0
         for analog_signal in axona_file.analog_signals:
-            if axona_channel_group == axona_file.channel_group(analog_signal.channel_id):
+            try:
+                current_channel_group = axona_file.channel_group(analog_signal.channel_id)
+            except KeyError as e:
+                print(
+                    'Warning: unable to get channel group from channel',
+                    analog_signal.channel_id)
+                continue
+            if axona_channel_group == current_channel_group:
                 lfp_index += 1
 
                 lfp = channel_group.require_group("LFP")
