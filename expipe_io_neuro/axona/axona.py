@@ -94,9 +94,6 @@ def generate_analog_signals(exdir_path, axona_file):
                 lfp = channel_group.require_group("LFP")
 
                 lfp_timeseries = lfp.require_group("LFP_timeseries_{}".format(lfp_index))
-                spike_train = axona_channel_group.spike_train
-                channel_identities = np.array([ch.index for ch in
-                                               axona_channel_group.channels])
                 # TODO analog signals have only one channel
                 lfp_timeseries.attrs["num_samples"] = len(analog_signal.signal)
                 lfp_timeseries.attrs["start_time"] = start_time
