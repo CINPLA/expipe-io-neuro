@@ -86,7 +86,7 @@ def generate_analog_signals(exdir_path, axona_file):
             except KeyError as e:
                 print(
                     'Warning: unable to get channel group from channel',
-                    analog_signal.channel_id)
+                    analog_signal.channel_id, exdir_path)
                 continue
             if axona_channel_group == current_channel_group:
                 lfp_index += 1
