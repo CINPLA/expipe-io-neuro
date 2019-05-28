@@ -319,7 +319,7 @@ def generate_events(exdir_path, openephys_rec):
     for event_source in openephys_rec.events:
         name = event_source.processor.lower() + '_' + str(event_source.node_id)
         if name in events:
-            shutil.rmtree(events[name].directory)
+            shutil.rmtree(str(events[name].directory))
         ev_group = events.create_group(name)
         ev_group.attrs['node_id'] = event_source.node_id
         ev_group.attrs['processor'] = event_source.processor.lower()
