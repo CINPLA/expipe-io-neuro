@@ -318,7 +318,7 @@ def generate_events(exdir_path, openephys_rec):
 
     for event_source in openephys_rec.events:
         channel = np.unique(event_source.channels)[0]
-	name = event_source.processor.lower() + '_' + str(event_source.node_id) + '_' + str(channel)
+        name = event_source.processor.lower() + '_' + str(event_source.node_id) + '_' + str(channel)
         if name in events:
             shutil.rmtree(str(events[name].directory))
         ev_group = events.create_group(name)
